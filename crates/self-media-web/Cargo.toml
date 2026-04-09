@@ -1,0 +1,24 @@
+[package]
+name = "self-media-web"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+self-media-core = { workspace = true }
+self-media-crypto = { workspace = true }
+self-media-db = { workspace = true }
+self-media-ai = { workspace = true }
+self-media-publish = { workspace = true }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+dotenvy = "0.15"

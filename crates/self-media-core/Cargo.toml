@@ -1,0 +1,24 @@
+[package]
+name = "self-media-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+self-media-crypto = { workspace = true }
+self-media-db = { workspace = true }
+self-media-ai = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+sqlx = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+lru = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }

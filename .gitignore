@@ -1,0 +1,32 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# sqlx offline data
+.sqlx/

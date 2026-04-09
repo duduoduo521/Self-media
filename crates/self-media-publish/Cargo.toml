@@ -1,0 +1,16 @@
+[package]
+name = "self-media-publish"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+self-media-core = { workspace = true }
+
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }

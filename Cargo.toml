@@ -1,0 +1,79 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/self-media-crypto",
+    "crates/self-media-db",
+    "crates/self-media-core",
+    "crates/self-media-ai",
+    "crates/self-media-publish",
+    "crates/self-media-web",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+
+[workspace.dependencies]
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 错误处理
+thiserror = "1"
+anyhow = "1"
+
+# 数据库
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# 加密
+aes-gcm = "0.10"
+argon2 = "0.5"
+subtle = "2"
+base64 = "0.22"
+rand = "0.8"
+
+# JWT
+jsonwebtoken = "9"
+
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
+
+# HTTP 服务
+axum = { version = "0.8", features = ["macros", "ws"] }
+axum-csrf = "0.11"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# 时间
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# 异步 trait
+async-trait = "0.1"
+
+# 流处理
+futures = "0.3"
+bytes = "1"
+
+# LRU 缓存
+lru = "0.12"
+
+# hex 解码
+hex = "0.4"
+
+# 共享 crate 引用
+self-media-crypto = { path = "crates/self-media-crypto" }
+self-media-db = { path = "crates/self-media-db" }
+self-media-core = { path = "crates/self-media-core" }
+self-media-ai = { path = "crates/self-media-ai" }
+self-media-publish = { path = "crates/self-media-publish" }
