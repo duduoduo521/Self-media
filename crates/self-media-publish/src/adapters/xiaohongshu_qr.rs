@@ -12,6 +12,7 @@ use crate::qr_login::{QrCodeInfo, QrCodeStatus, QrLoginHandler};
 
 /// 小红书扫码登录处理器
 pub struct XiaohongshuQrLogin {
+    #[allow(dead_code)]
     http: Client,
     /// 客户端 ID
     client_id: String,

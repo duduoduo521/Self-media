@@ -37,7 +37,7 @@
       <n-divider />
 
       <n-form-item label="发布平台">
-        <PlatformSelector v-model:value="selectedPlatforms" />
+        <PlatformSelector v-model="selectedPlatforms" />
       </n-form-item>
 
       <n-space vertical :size="16">

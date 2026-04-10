@@ -12,6 +12,7 @@ use crate::qr_login::{QrCodeInfo, QrCodeStatus, QrLoginHandler};
 
 /// 头条扫码登录处理器
 pub struct ToutiaoQrLogin {
+    #[allow(dead_code)]
     http: Client,
     /// 客户端 ID
     client_key: String,

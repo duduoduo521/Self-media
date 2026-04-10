@@ -10,7 +10,7 @@
         </n-form-item>
         <n-space vertical>
           <n-button type="primary" block :loading="loading" @click="handleLogin">登录</n-button>
-          <n-button block :loading="loading" @click="handleRegister">注册</n-button>
+          <n-button block @click="handleGoToRegister">注册</n-button>
         </n-space>
       </n-form>
     </n-card>
@@ -38,12 +38,16 @@ const rules: FormRules = {
 }
 
 async function handleLogin() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   loading.value = true
   try {
     await userStore.login(form.username, form.password)
     message.success('登录成功')
-    router.push({ name: 'Dashboard' })
+    await router.push('/')
   } catch (e: any) {
     message.error(e.message || '登录失败')
   } finally {
@@ -51,18 +55,8 @@ async function handleLogin() {
   }
 }
 
-async function handleRegister() {
-  await formRef.value?.validate()
-  loading.value = true
-  try {
-    await userStore.register(form.username, form.password)
-    message.success('注册成功')
-    router.push({ name: 'Dashboard' })
-  } catch (e: any) {
-    message.error(e.message || '注册失败')
-  } finally {
-    loading.value = false
-  }
+function handleGoToRegister() {
+  router.push({ name: 'Register' })
 }
 </script>
 

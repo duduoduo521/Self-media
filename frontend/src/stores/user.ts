@@ -10,15 +10,15 @@ export const useUserStore = defineStore('user', () => {
 
   async function register(username: string, password: string) {
     const { data } = await authApi.register({ username, password })
-    user.value = data.user
-    token.value = data.session.token
-    localStorage.setItem('token', data.session.token)
+    user.value = data.data.user
+    token.value = data.data.session.token
+    localStorage.setItem('token', data.data.session.token)
   }
 
   async function login(username: string, password: string) {
     const { data } = await authApi.login({ username, password })
-    token.value = data.session.token
-    localStorage.setItem('token', data.session.token)
+    token.value = data.data.session.token
+    localStorage.setItem('token', data.data.session.token)
   }
 
   async function logout() {

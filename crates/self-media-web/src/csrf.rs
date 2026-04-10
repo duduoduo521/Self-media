@@ -4,11 +4,11 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use axum_extra::extract::CookieJar;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
 
 /// 生成 CSRF Token
+#[allow(dead_code)]
 pub fn generate_csrf_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill(&mut bytes);
@@ -60,9 +60,10 @@ fn extract_csrf_token_from_request(req: &Request) -> Option<String> {
 
 /// CSRF 验证标记（可注入到请求扩展中供后续使用）
 #[derive(Clone, Debug)]
-pub struct CsrfVerified(pub bool);
+pub struct CsrfVerified(#[allow(dead_code)] pub bool);
 
 /// 生成包含 CSRF Token 的 Cookie 响应
+#[allow(dead_code)]
 pub fn csrf_token_response(token: &str) -> (String, axum::http::header::HeaderValue) {
     let cookie = format!(
         "csrf_token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400",

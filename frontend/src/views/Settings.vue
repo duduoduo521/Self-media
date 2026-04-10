@@ -1,18 +1,12 @@
 <template>
   <n-space vertical :size="16">
     <n-card title="API Key 配置">
-      <n-form ref="apiKeyForm" :model="apiKeyForm" label-placement="left" label-width="100">
+      <n-form ref="apiKeyFormRef" :model="apiKeyForm" label-placement="left" label-width="100">
         <n-form-item label="提供商">
           <n-select v-model:value="apiKeyForm.provider" :options="[{ label: 'MiniMax', value: 'minimax' }]" style="width: 200px" />
         </n-form-item>
         <n-form-item label="API Key">
           <n-input v-model:value="apiKeyForm.key" type="password" show-password-on="click" placeholder="输入 MiniMax API Key" />
-        </n-form-item>
-        <n-form-item label="区域">
-          <n-radio-group v-model:value="apiKeyForm.region">
-            <n-radio value="cn">国内 (CN)</n-radio>
-            <n-radio value="global">国际 (Global)</n-radio>
-          </n-radio-group>
         </n-form-item>
         <n-button type="primary" :loading="savingKey" @click="handleSaveApiKey">保存</n-button>
       </n-form>
@@ -52,7 +46,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NSelect, NRadioGroup, NRadio, NButton, NSwitch, NDynamicTags, useMessage } from 'naive-ui'
+import type { FormInst } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NSelect, NSpace, NButton, NSwitch, NDynamicTags, useMessage } from 'naive-ui'
 import { authApi } from '@/api/auth'
 import { configApi, type UserPreferences } from '@/api/config'
 import { useUserStore } from '@/stores/user'
@@ -60,6 +55,7 @@ import { useUserStore } from '@/stores/user'
 const message = useMessage()
 const userStore = useUserStore()
 
+const apiKeyFormRef = ref<FormInst | null>(null)
 const savingKey = ref(false)
 const savingPrefs = ref(false)
 const changingPassword = ref(false)
@@ -67,7 +63,6 @@ const changingPassword = ref(false)
 const apiKeyForm = reactive({
   provider: 'minimax',
   key: '',
-  region: 'cn',
 })
 
 const prefs = reactive<UserPreferences>({
@@ -84,7 +79,11 @@ const passwordForm = reactive({
 async function handleSaveApiKey() {
   savingKey.value = true
   try {
-    await configApi.setApiKey(apiKeyForm)
+    await configApi.setApiKey({
+      provider: apiKeyForm.provider,
+      key: apiKeyForm.key,
+      region: 'cn',
+    })
     message.success('API Key 保存成功')
     apiKeyForm.key = ''
   } catch (e: any) {
@@ -123,6 +122,13 @@ onMounted(async () => {
   try {
     const { data } = await configApi.getPreferences()
     Object.assign(prefs, data.preferences)
+  } catch {}
+
+  try {
+    const { data: keyData } = await configApi.getApiKey()
+    if (keyData.key) {
+      apiKeyForm.key = keyData.key
+    }
   } catch {}
 })
 </script>

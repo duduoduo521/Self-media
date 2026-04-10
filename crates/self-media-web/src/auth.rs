@@ -5,9 +5,11 @@ use axum::{
     routing::{delete, post, put},
     Json, Router,
 };
-use serde::Deserialize;
 
-use self_media_core::user::model::{Session, User};
+use self_media_core::error::AUTH_006;
+use self_media_core::user::model::{RegisterRequest as CoreRegisterRequest, RegisterResponse, Session, UserInfo};
+use crate::AppError;
+use serde::Deserialize;
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
 
@@ -19,13 +21,6 @@ pub fn router() -> Router<AppState> {
         .route("/password", put(change_password))
 }
 
-#[derive(Deserialize)]
-pub struct RegisterRequest {
-    pub username: String,
-    pub password: String,
-}
-
-/// 登录响应：设置 HttpOnly Cookie
 struct LoginResponse {
     session: Session,
     token: String,
@@ -34,7 +29,6 @@ struct LoginResponse {
 impl IntoResponse for LoginResponse {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
-        // 设置 HttpOnly Cookie（7天过期）
         let cookie = format!(
             "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
             self.token
@@ -49,16 +43,22 @@ impl IntoResponse for LoginResponse {
             Json(serde_json::json!({
                 "code": "0",
                 "message": "success",
-                "data": { "session": self.session }
+                "data": {
+                    "session": {
+                        "id": self.session.id,
+                        "user_id": self.session.user_id,
+                        "token": self.token,
+                        "expires_at": self.session.expires_at
+                    }
+                }
             })),
         )
             .into_response()
     }
 }
 
-/// 注册响应：设置 HttpOnly Cookie
 struct RegisterResponseWrapper {
-    user: User,
+    user: UserInfo,
     session: Session,
     token: String,
 }
@@ -80,9 +80,9 @@ impl IntoResponse for RegisterResponseWrapper {
             Json(serde_json::json!({
                 "code": "0",
                 "message": "success",
-                "data": {
-                    "user": self.user,
-                    "session": self.session
+                "data": RegisterResponse {
+                    user: self.user,
+                    session: self.session,
                 }
             })),
         )
@@ -92,16 +92,33 @@ impl IntoResponse for RegisterResponseWrapper {
 
 async fn register(
     State(state): State<AppState>,
-    Json(body): Json<RegisterRequest>,
+    Json(body): Json<CoreRegisterRequest>,
 ) -> Result<RegisterResponseWrapper, WebError> {
-    let (user, session) = state
-        .user_service
-        .register(&body.username, &body.password)
-        .await?;
-    // 注册后首次登录需要重新输入密码派生密钥
+    let client = self_media_ai::MiniMaxClient::new(
+        body.minimax_api_key.clone(),
+        "https://api.minimax.chat".to_string(),
+    );
+    client.validate_api_key().await
+        .map_err(|e| WebError(AppError::auth(AUTH_006, format!("MiniMax API Key 无效: {}", e))))?;
+
+    let core_req = CoreRegisterRequest {
+        username: body.username,
+        password: body.password,
+        email: body.email,
+        minimax_api_key: body.minimax_api_key,
+        phone: body.phone,
+    };
+    let (user, session) = state.user_service.register(&core_req).await?;
     let token = session.token.clone();
+    let user_info = UserInfo {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        created_at: user.created_at,
+    };
     Ok(RegisterResponseWrapper {
-        user,
+        user: user_info,
         session,
         token,
     })

@@ -22,6 +22,7 @@ struct BilibiliQrStatusResponse {
     url: Option<String>,
     /// 错误信息
     #[serde(rename = "message")]
+    #[allow(dead_code)]
     message: Option<String>,
     /// 跳转 URL（包含登录信息）
     #[serde(rename = "redirect_url")]

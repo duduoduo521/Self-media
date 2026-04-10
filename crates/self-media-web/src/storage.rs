@@ -12,6 +12,7 @@ use self_media_core::error::AppError;
 
 /// 存储配置
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StorageConfig {
     /// 存储类型：local, oss, s3
     pub storage_type: StorageType,
@@ -33,6 +34,7 @@ impl Default for StorageConfig {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum StorageType {
     Local,
     Oss,
@@ -41,10 +43,12 @@ pub enum StorageType {
 
 /// 文件存储服务
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct StorageService {
     config: StorageConfig,
 }
 
+#[allow(dead_code)]
 impl StorageService {
     /// 创建存储服务
     pub fn new(config: StorageConfig) -> Self {
@@ -174,6 +178,7 @@ impl StorageService {
 
 /// 文件信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct FileInfo {
     /// 生成的文件名
     pub filename: String,
@@ -191,6 +196,7 @@ pub struct FileInfo {
 
 /// 文件上传请求
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UploadRequest {
     pub filename: String,
     pub content_type: String,
@@ -200,6 +206,7 @@ pub struct UploadRequest {
 
 /// 文件上传响应
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct UploadResponse {
     pub file: FileInfo,
 }

@@ -13,10 +13,36 @@ use crate::{ApiOk, AppState, AuthUser, WebError};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api-key", put(set_api_key))
+        .route("/api-key", get(get_api_key).put(set_api_key))
         .route("/platforms", get(get_platforms))
         .route("/platforms/{platform}", put(set_platform))
         .route("/preferences", get(get_preferences).put(set_preferences))
+}
+
+#[derive(serde::Serialize)]
+pub struct ApiKeyResponse {
+    pub provider: String,
+    pub key: String,
+    pub region: String,
+}
+
+async fn get_api_key(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<ApiOk<ApiKeyResponse>, WebError> {
+    let api_key: Option<String> = sqlx::query_scalar(
+        "SELECT minimax_api_key FROM users WHERE id = ?"
+    )
+    .bind(auth.user_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| WebError(AppError::Internal(anyhow::anyhow!("数据库错误: {}", e))))?;
+
+    Ok(ApiOk(ApiKeyResponse {
+        provider: "minimax".to_string(),
+        key: api_key.unwrap_or_default(),
+        region: "cn".to_string(),
+    }))
 }
 
 #[derive(Deserialize)]

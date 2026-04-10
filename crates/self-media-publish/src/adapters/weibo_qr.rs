@@ -19,6 +19,7 @@ struct WeiboQrStatusResponse {
     #[serde(rename = "code")]
     code: Option<String>,  // 状态为3时返回，用于换取access_token
     #[serde(rename = "url")]
+    #[allow(dead_code)]
     url: Option<String>,
     #[serde(rename = "error")]
     error: Option<String>,
@@ -34,8 +35,10 @@ struct WeiboTokenResponse {
     #[serde(rename = "expires_in")]
     expires_in: Option<i64>,
     #[serde(rename = "error")]
+    #[allow(dead_code)]
     error: Option<String>,
     #[serde(rename = "error_code")]
+    #[allow(dead_code)]
     error_code: Option<i32>,
 }
 

@@ -10,16 +10,17 @@ use crate::types::{Hotspot, HotspotSource};
 
 pub struct HotspotService {
     http: Client,
-    cache: Mutex<HotspotCache>,
+    cache: Mutex<HashMap<HotspotSource, SourceCache>>,
+    rate_limiter: SourceRateLimiter,
 }
 
-struct HotspotCache {
+struct SourceCache {
     data: Vec<Hotspot>,
     last_fetch: Option<Instant>,
     ttl: Duration,
 }
 
-impl HotspotCache {
+impl SourceCache {
     fn new() -> Self {
         Self {
             data: Vec::new(),
@@ -36,64 +37,84 @@ impl HotspotCache {
     }
 }
 
+impl Default for SourceCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HotspotService {
     pub fn new(http: Client) -> Self {
         Self {
             http,
-            cache: Mutex::new(HotspotCache::new()),
+            cache: Mutex::new(HashMap::new()),
+            rate_limiter: SourceRateLimiter::new(),
         }
     }
 
     /// 获取所有平台热点（带缓存）
     pub async fn fetch_all(&self) -> Result<Vec<Hotspot>, AppError> {
-        {
-            let cache = self.cache.lock().unwrap();
-            if cache.is_valid() {
-                return Ok(cache.data.clone());
-            }
-        }
+        let sources = vec![
+            HotspotSource::Weibo,
+            HotspotSource::Bilibili,
+            HotspotSource::Douyin,
+            HotspotSource::Zhihu,
+            HotspotSource::Toutiao,
+            HotspotSource::Xiaohongshu,
+        ];
 
-        let results: Vec<Result<Vec<Hotspot>, AppError>> = futures::future::join_all(vec![
-            Box::pin(self.fetch_weibo()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-            Box::pin(self.fetch_bilibili()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-            Box::pin(self.fetch_douyin()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-            Box::pin(self.fetch_zhihu()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-            Box::pin(self.fetch_toutiao()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-            Box::pin(self.fetch_xiaohongshu()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
-        ]).await;
+        let mut results: Vec<Hotspot> = Vec::new();
 
-        let mut all = Vec::new();
-        for result in results {
-            match result {
-                Ok(hotspots) => all.extend(hotspots),
+        for source in sources {
+            match self.fetch_by_source_internal(&source).await {
+                Ok(hotspots) => results.extend(hotspots),
                 Err(e) => {
-                    tracing::warn!("热点数据源获取失败: {}", e);
+                    tracing::warn!("热点数据源 {:?} 获取失败: {}", source, e);
                 }
             }
         }
 
-        all.sort_by(|a, b| b.hot_score.cmp(&a.hot_score));
-        all.dedup_by(|a, b| a.title == b.title);
+        results.sort_by(|a, b| b.hot_score.cmp(&a.hot_score));
+        results.dedup_by(|a, b| a.title == b.title);
+
+        Ok(results)
+    }
+
+    /// 获取指定来源的热点（使用缓存）
+    pub async fn fetch_by_source(&self, source: HotspotSource) -> Result<Vec<Hotspot>, AppError> {
+        if let Some(cached) = {
+            let cache = self.cache.lock().unwrap();
+            cache.get(&source).filter(|c| c.is_valid()).map(|c| c.data.clone())
+        } {
+            return Ok(cached);
+        }
+
+        self.fetch_by_source_internal(&source).await
+    }
+
+    /// 内部方法：获取指定来源的热点（强制刷新）
+    async fn fetch_by_source_internal(&self, source: &HotspotSource) -> Result<Vec<Hotspot>, AppError> {
+        self.rate_limiter.acquire(source).await;
+
+        let hotspots = match source {
+            HotspotSource::Weibo => self.fetch_weibo().await?,
+            HotspotSource::Bilibili => self.fetch_bilibili().await?,
+            HotspotSource::Douyin => self.fetch_douyin().await?,
+            HotspotSource::Zhihu => self.fetch_zhihu().await?,
+            HotspotSource::Toutiao => self.fetch_toutiao().await?,
+            HotspotSource::Xiaohongshu => self.fetch_xiaohongshu().await?,
+        };
 
         {
             let mut cache = self.cache.lock().unwrap();
-            cache.data = all.clone();
-            cache.last_fetch = Some(Instant::now());
+            cache.insert(source.clone(), SourceCache {
+                data: hotspots.clone(),
+                last_fetch: Some(Instant::now()),
+                ttl: Duration::from_secs(300),
+            });
         }
 
-        Ok(all)
-    }
-
-    /// 获取指定来源的热点
-    pub async fn fetch_by_source(&self, source: HotspotSource) -> Result<Vec<Hotspot>, AppError> {
-        match source {
-            HotspotSource::Weibo => self.fetch_weibo().await,
-            HotspotSource::Bilibili => self.fetch_bilibili().await,
-            HotspotSource::Douyin => self.fetch_douyin().await,
-            HotspotSource::Zhihu => self.fetch_zhihu().await,
-            HotspotSource::Toutiao => self.fetch_toutiao().await,
-            HotspotSource::Xiaohongshu => self.fetch_xiaohongshu().await,
-        }
+        Ok(hotspots)
     }
 
     async fn fetch_weibo(&self) -> Result<Vec<Hotspot>, AppError> {

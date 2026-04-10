@@ -15,14 +15,18 @@ impl UserService {
     }
 
     /// 注册
-    pub async fn register(&self, username: &str, password: &str) -> Result<(User, Session), AppError> {
-        validate_username(username)?;
-        validate_password(password)?;
+    pub async fn register(&self, req: &RegisterRequest) -> Result<(User, Session), AppError> {
+        validate_username(&req.username)?;
+        validate_password(&req.password)?;
+        validate_email(&req.email)?;
+        if let Some(ref phone) = req.phone {
+            validate_phone(phone)?;
+        }
 
         let existing: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM users WHERE username = ?"
         )
-        .bind(username)
+        .bind(&req.username)
         .fetch_one(&self.db)
         .await?;
         if existing > 0 {
@@ -30,13 +34,16 @@ impl UserService {
         }
 
         let salt = generate_salt();
-        let password_hash = hash_password(password, &salt)?;
+        let password_hash = hash_password(&req.password, &salt)?;
         let user: User = sqlx::query_as(
-            "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?) RETURNING *"
+            "INSERT INTO users (username, password_hash, salt, email, minimax_api_key, phone) VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
         )
-        .bind(username)
+        .bind(&req.username)
         .bind(&password_hash)
         .bind(&salt)
+        .bind(&req.email)
+        .bind(&req.minimax_api_key)
+        .bind(&req.phone)
         .fetch_one(&self.db)
         .await?;
 
@@ -46,22 +53,31 @@ impl UserService {
 
     /// 登录
     pub async fn login(&self, username: &str, password: &str) -> Result<(Session, UserKey), AppError> {
+        let t0 = std::time::Instant::now();
         let user: Option<User> = sqlx::query_as(
             "SELECT * FROM users WHERE username = ?"
         )
         .bind(username)
         .fetch_optional(&self.db)
         .await?;
+        tracing::debug!("login: user query took {:?}", t0.elapsed());
 
         let user = user.ok_or(AppError::auth(AUTH_002, "用户名或密码错误"))?;
 
+        let t1 = std::time::Instant::now();
         if !verify_password(password, &user.password_hash, &user.salt)? {
             return Err(AppError::auth(AUTH_002, "用户名或密码错误"));
         }
+        tracing::debug!("login: password verify took {:?}", t1.elapsed());
 
-        // 派生用户密钥用于后续加密操作
+        let t2 = std::time::Instant::now();
         let user_key = UserKey::derive_from_password(password, &user.salt)?;
+        tracing::debug!("login: user_key derive took {:?}", t2.elapsed());
+
+        let t3 = std::time::Instant::now();
         let session = self.create_session(user.id).await?;
+        tracing::debug!("login: create_session took {:?}", t3.elapsed());
+        tracing::debug!("login: total took {:?}", t0.elapsed());
         Ok((session, user_key))
     }
 
@@ -234,6 +250,27 @@ fn validate_password(password: &str) -> Result<(), AppError> {
     let has_digit = password.chars().any(|c| c.is_numeric());
     if !(has_upper && has_lower && has_digit) {
         return Err(AppError::validation(AUTH_005, "密码必须包含大小写字母和数字"));
+    }
+    Ok(())
+}
+
+fn validate_email(email: &str) -> Result<(), AppError> {
+    if email.is_empty() {
+        return Err(AppError::validation(AUTH_005, "邮箱不能为空"));
+    }
+    let email_regex = regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+    if !email_regex.is_match(email) {
+        return Err(AppError::validation(AUTH_005, "邮箱格式不正确"));
+    }
+    Ok(())
+}
+
+fn validate_phone(phone: &str) -> Result<(), AppError> {
+    if phone.len() != 11 {
+        return Err(AppError::validation(AUTH_005, "手机号码必须为11位"));
+    }
+    if !phone.chars().all(|c| c.is_numeric()) {
+        return Err(AppError::validation(AUTH_005, "手机号码只能包含数字"));
     }
     Ok(())
 }

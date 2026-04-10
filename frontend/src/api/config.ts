@@ -10,6 +10,9 @@ export const configApi = {
   setApiKey(data: { provider: string; key: string; region: string }) {
     return http.put('/config/api-key', data)
   },
+  getApiKey() {
+    return http.get<{ provider: string; key: string; region: string }>('/config/api-key')
+  },
   getPlatforms() {
     return http.get('/config/platforms')
   },

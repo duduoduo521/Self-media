@@ -32,10 +32,14 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # 加密
 aes-gcm = "0.10"
-argon2 = "0.5"
+bcrypt = "0.16"
 subtle = "2"
 base64 = "0.22"
 rand = "0.8"
+sha2 = "0.10"
+
+# 正则
+regex = "1"
 
 # JWT
 jsonwebtoken = "9"

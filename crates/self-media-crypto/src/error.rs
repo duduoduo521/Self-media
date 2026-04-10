@@ -48,9 +48,9 @@ impl From<jsonwebtoken::errors::Error> for CryptoError {
     }
 }
 
-impl From<argon2::Error> for CryptoError {
-    fn from(e: argon2::Error) -> Self {
-        CryptoError::KeyDerivation(e.to_string())
+impl From<bcrypt::BcryptError> for CryptoError {
+    fn from(e: bcrypt::BcryptError) -> Self {
+        CryptoError::PasswordHash(e.to_string())
     }
 }
 

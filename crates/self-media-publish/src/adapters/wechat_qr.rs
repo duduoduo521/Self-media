@@ -12,6 +12,7 @@ use crate::qr_login::{QrCodeInfo, QrCodeStatus, QrLoginHandler};
 
 /// 微信公众号扫码登录处理器
 pub struct WechatQrLogin {
+    #[allow(dead_code)]
     http: Client,
     /// 微信公众号 AppID
     app_id: String,

@@ -1,5 +1,5 @@
 //! SSE 实时进度推送服务
-//! 
+//!
 //! 用于任务执行进度的实时推送
 
 use axum::{
@@ -10,7 +10,6 @@ use axum::{
 };
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tokio_stream::StreamExt;
 
 use crate::AppState;
 

@@ -52,6 +52,7 @@ pub struct AppState {
     pub user_key_cache: Arc<UserKeyCache>,
     pub qr_manager: Arc<tokio::sync::RwLock<QrLoginManager>>,
     pub sse_sender: tokio::sync::broadcast::Sender<sse::SseEvent>,
+    pub http: reqwest::Client,
 }
 
 /// 已认证用户（由中间件注入到 request extensions）
@@ -193,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 系统密钥持久化
     let system_key = load_or_create_system_key().await?;
-    
+
     // 启动时保存一次密钥（确保文件存在）
     if let Err(e) = save_system_key(&system_key) {
         tracing::warn!("系统密钥持久化失败: {}", e);
@@ -229,6 +230,7 @@ async fn main() -> anyhow::Result<()> {
         user_key_cache,
         qr_manager,
         sse_sender,
+        http,
     };
 
     let protected = Router::new()

@@ -12,6 +12,7 @@ use crate::qr_login::{QrCodeInfo, QrCodeStatus, QrLoginHandler};
 
 /// 抖音扫码登录处理器
 pub struct DouyinQrLogin {
+    #[allow(dead_code)]
     http: Client,
     /// 客户端 Key
     client_key: String,

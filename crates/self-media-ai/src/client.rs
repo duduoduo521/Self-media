@@ -194,6 +194,29 @@ impl MiniMaxClient {
         Ok(audio_bytes)
     }
 
+    /// 验证 API Key 是否有效
+    pub async fn validate_api_key(&self) -> Result<(), AiError> {
+        let resp = self.http
+            .post(format!("{}/v1/text/chatcompletion_v2", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&serde_json::json!({
+                "model": "MiniMax-Text-01",
+                "messages": [{"role": "user", "content": "hi"}],
+                "tokens_to_generate": 1
+            }))
+            .send()
+            .await
+            .map_err(|e| AiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                Err(AiError::InvalidApiKey("API Key 无效".into()))
+            }
+            _ if resp.status().is_success() => Ok(()),
+            _ => Err(AiError::ApiError(format!("API 返回错误: {}", resp.status()))),
+        }
+    }
+
     fn map_api_error(&self, e: reqwest::Error) -> AiError {
         match e.status() {
             Some(StatusCode::UNAUTHORIZED) | Some(StatusCode::FORBIDDEN) => {
