@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::Duration;
 
 use lru::LruCache;
 use self_media_crypto::UserKey;
@@ -147,6 +146,60 @@ impl ConfigService {
         .await?;
         Ok(())
     }
+
+    /// 获取用户所有平台配置
+    pub async fn get_platform_configs(&self, user_id: i64) -> Result<Vec<PlatformConfig>, AppError> {
+        let rows: Vec<(String, i32, i32, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT platform, enabled, image_count, cookies, extra FROM platform_configs WHERE user_id = ?"
+        )
+        .bind(user_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut configs = Vec::new();
+        for (platform_str, enabled, image_count, cookies, extra) in rows {
+            let platform: Platform = serde_json::from_str(&format!("\"{}\"", platform_str))
+                .unwrap_or(Platform::Weibo);
+            let extra_map: HashMap<String, String> = extra
+                .and_then(|e| serde_json::from_str(&e).ok())
+                .unwrap_or_default();
+            
+            configs.push(PlatformConfig {
+                platform,
+                enabled: enabled != 0,
+                image_count: image_count as u32,
+                cookies,
+                extra: extra_map,
+            });
+        }
+        Ok(configs)
+    }
+
+    /// 设置/更新平台配置
+    pub async fn set_platform_config(&self, user_id: i64, config: &PlatformConfig) -> Result<(), AppError> {
+        let platform_str = serde_json::to_string(&config.platform)?;
+        let extra_str = serde_json::to_string(&config.extra)?;
+        
+        sqlx::query(
+            "INSERT INTO platform_configs (user_id, platform, enabled, image_count, cookies, extra) \
+             VALUES (?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(user_id, platform) DO UPDATE SET \
+             enabled = excluded.enabled, \
+             image_count = excluded.image_count, \
+             cookies = excluded.cookies, \
+             extra = excluded.extra, \
+             updated_at = datetime('now')"
+        )
+        .bind(user_id)
+        .bind(&platform_str[1..platform_str.len()-1]) // 去掉引号
+        .bind(config.enabled as i32)
+        .bind(config.image_count as i32)
+        .bind(&config.cookies)
+        .bind(&extra_str)
+        .execute(&self.db)
+        .await?;
+        Ok(())
+    }
 }
 
 // ---- 用户密钥缓存 ----
@@ -202,5 +255,11 @@ impl UserKeyCache {
     pub async fn invalidate(&self, user_id: i64) {
         let mut cache = self.cache.write().await;
         cache.pop(&user_id);
+    }
+
+    /// 插入用户密钥到缓存（登录时调用）
+    pub async fn insert(&self, user_id: i64, user_key: UserKey) {
+        let mut cache = self.cache.write().await;
+        cache.put(user_id, Arc::new(user_key));
     }
 }

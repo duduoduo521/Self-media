@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use self_media_core::types::{
-    ArticleContent, CookieStatus, Platform, PlatformCredential, PublishResult, VideoContent,
+    ArticleContent, Platform, PlatformCredential, PublishResult, VideoContent,
 };
 
 /// 平台发布适配器 Trait
@@ -62,4 +62,7 @@ pub enum PublishError {
 
     #[error("网络错误: {0}")]
     Network(#[from] reqwest::Error),
+    
+    #[error("解析错误: {0}")]
+    ParseError(String),
 }

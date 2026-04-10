@@ -8,6 +8,7 @@ pub const AUTH_002: &str = "AUTH_002"; // 密码错误
 pub const AUTH_003: &str = "AUTH_003"; // 会话过期
 pub const AUTH_004: &str = "AUTH_004"; // 用户名格式不合法
 pub const AUTH_005: &str = "AUTH_005"; // 密码强度不足
+pub const AUTH_006: &str = "AUTH_006"; // 资源访问被拒绝
 pub const AI_001: &str = "AI_001";     // API Key 无效
 pub const AI_002: &str = "AI_002";     // 生成超时
 pub const AI_003: &str = "AI_003";     // 配额不足

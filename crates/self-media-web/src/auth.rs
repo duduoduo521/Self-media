@@ -1,12 +1,13 @@
 use axum::{
     extract::State,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{delete, post, put},
     Json, Router,
 };
 use serde::Deserialize;
 
 use self_media_core::user::model::{Session, User};
-use self_media_core::user::UserService;
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
 
@@ -24,21 +25,86 @@ pub struct RegisterRequest {
     pub password: String,
 }
 
-#[derive(serde::Serialize)]
-pub struct RegisterResponse {
-    pub user: User,
-    pub session: Session,
+/// 登录响应：设置 HttpOnly Cookie
+struct LoginResponse {
+    session: Session,
+    token: String,
+}
+
+impl IntoResponse for LoginResponse {
+    fn into_response(self) -> Response {
+        let mut headers = HeaderMap::new();
+        // 设置 HttpOnly Cookie（7天过期）
+        let cookie = format!(
+            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
+            self.token
+        );
+        headers.insert(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(&cookie).unwrap(),
+        );
+        (
+            StatusCode::OK,
+            headers,
+            Json(serde_json::json!({
+                "code": "0",
+                "message": "success",
+                "data": { "session": self.session }
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// 注册响应：设置 HttpOnly Cookie
+struct RegisterResponseWrapper {
+    user: User,
+    session: Session,
+    token: String,
+}
+
+impl IntoResponse for RegisterResponseWrapper {
+    fn into_response(self) -> Response {
+        let mut headers = HeaderMap::new();
+        let cookie = format!(
+            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
+            self.token
+        );
+        headers.insert(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(&cookie).unwrap(),
+        );
+        (
+            StatusCode::OK,
+            headers,
+            Json(serde_json::json!({
+                "code": "0",
+                "message": "success",
+                "data": {
+                    "user": self.user,
+                    "session": self.session
+                }
+            })),
+        )
+            .into_response()
+    }
 }
 
 async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
-) -> Result<ApiOk<RegisterResponse>, WebError> {
+) -> Result<RegisterResponseWrapper, WebError> {
     let (user, session) = state
         .user_service
         .register(&body.username, &body.password)
         .await?;
-    Ok(ApiOk(RegisterResponse { user, session }))
+    // 注册后首次登录需要重新输入密码派生密钥
+    let token = session.token.clone();
+    Ok(RegisterResponseWrapper {
+        user,
+        session,
+        token,
+    })
 }
 
 #[derive(Deserialize)]
@@ -50,16 +116,40 @@ pub struct LoginRequest {
 async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
-) -> Result<ApiOk<Session>, WebError> {
-    let session = state.user_service.login(&body.username, &body.password).await?;
-    Ok(ApiOk(session))
+) -> Result<LoginResponse, WebError> {
+    let (session, user_key) = state.user_service.login(&body.username, &body.password).await?;
+    // 缓存用户密钥，供后续 API Key 加密使用
+    state.user_key_cache.insert(session.user_id, user_key).await;
+    let token = session.token.clone();
+    Ok(LoginResponse {
+        session,
+        token,
+    })
+}
+
+/// 登出响应：清除 Cookie
+struct LogoutResponse;
+
+impl IntoResponse for LogoutResponse {
+    fn into_response(self) -> Response {
+        let mut headers = HeaderMap::new();
+        // 清除 Cookie（设置过期时间为 0）
+        let cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0";
+        headers.insert(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(cookie).unwrap(),
+        );
+        (StatusCode::OK, headers, Json(serde_json::json!({"code": "0", "message": "success"})))
+            .into_response()
+    }
 }
 
 async fn logout(
     auth: AuthUser,
-    State(_state): State<AppState>,
-) -> Result<ApiOk<()>, WebError> {
-    Ok(ApiOk(()))
+    State(state): State<AppState>,
+) -> Result<LogoutResponse, WebError> {
+    state.user_service.logout(&auth.token).await?;
+    Ok(LogoutResponse)
 }
 
 #[derive(Deserialize)]

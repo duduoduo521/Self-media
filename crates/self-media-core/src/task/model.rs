@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Platform, TaskMode, TaskStatus};
+use crate::types::{TaskMode, TaskStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Task {

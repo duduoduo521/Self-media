@@ -11,6 +11,7 @@ use crate::publisher::PlatformPublisher;
 pub struct CookieHealthChecker {
     publishers: HashMap<Platform, Box<dyn PlatformPublisher>>,
     last_check: Mutex<HashMap<Platform, chrono::DateTime<Utc>>>,
+    #[allow(dead_code)]
     check_interval: Duration,
 }
 
@@ -27,7 +28,7 @@ impl CookieHealthChecker {
     pub async fn check(
         &self,
         platform: &Platform,
-        credential: &PlatformCredential,
+        #[allow(unused_variables)] credential: &PlatformCredential,
     ) -> Result<CookieStatus, String> {
         let publisher = self
             .publishers

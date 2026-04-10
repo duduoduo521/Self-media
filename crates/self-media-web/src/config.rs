@@ -6,6 +6,8 @@ use axum::{
 use serde::Deserialize;
 
 use self_media_core::config::service::{PlatformConfig, UserPreferences};
+use self_media_core::error::{AppError, *};
+use self_media_core::types::Platform;
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
 
@@ -46,12 +48,11 @@ pub struct PlatformListResponse {
 }
 
 async fn get_platforms(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
+    auth: AuthUser,
+    State(state): State<AppState>,
 ) -> Result<ApiOk<PlatformListResponse>, WebError> {
-    Ok(ApiOk(PlatformListResponse {
-        platforms: vec![],
-    }))
+    let platforms = state.config_service.get_platform_configs(auth.user_id).await?;
+    Ok(ApiOk(PlatformListResponse { platforms }))
 }
 
 #[derive(Deserialize)]
@@ -59,14 +60,35 @@ pub struct SetPlatformRequest {
     pub enabled: bool,
     pub image_count: u32,
     pub cookies: Option<String>,
+    pub extra: Option<std::collections::HashMap<String, String>>,
 }
 
 async fn set_platform(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_platform): Path<String>,
-    Json(_body): Json<SetPlatformRequest>,
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(platform): Path<String>,
+    Json(body): Json<SetPlatformRequest>,
 ) -> Result<ApiOk<()>, WebError> {
+    // 解析平台名称
+    let platform_enum = match platform.to_lowercase().as_str() {
+        "weibo" => Platform::Weibo,
+        "bilibili" => Platform::Bilibili,
+        "toutiao" => Platform::Toutiao,
+        "xiaohongshu" => Platform::Xiaohongshu,
+        "douyin" => Platform::Douyin,
+        "wechatofficial" | "wechat" | "wechat_official" => Platform::WeChatOfficial,
+        _ => return Err(WebError(AppError::validation(INPUT_001, "未知平台"))),
+    };
+
+    let config = PlatformConfig {
+        platform: platform_enum,
+        enabled: body.enabled,
+        image_count: body.image_count,
+        cookies: body.cookies,
+        extra: body.extra.unwrap_or_default(),
+    };
+
+    state.config_service.set_platform_config(auth.user_id, &config).await?;
     Ok(ApiOk(()))
 }
 

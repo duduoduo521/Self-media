@@ -1,12 +1,12 @@
 use axum::{
     extract::{Path, State},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 
 use self_media_core::task::model::Task;
-use self_media_core::types::Platform;
+use self_media_core::task::executor::{TaskExecutor, ExecutionContext};
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
 
@@ -21,7 +21,7 @@ pub fn router() -> Router<AppState> {
 pub struct CreateTaskRequest {
     pub mode: self_media_core::types::TaskMode,
     pub topic: String,
-    pub platforms: Vec<Platform>,
+    pub platforms: Vec<self_media_core::types::Platform>,
 }
 
 #[derive(serde::Serialize)]
@@ -56,30 +56,96 @@ async fn list_tasks(
 }
 
 async fn get_task(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiOk<TaskResponse>, WebError> {
     let scheduler = state.task_scheduler.lock().await;
     let task = scheduler.get_task(&id).await?;
+    // 权限校验：只能查看自己的任务
+    if task.user_id != auth.user_id {
+        return Err(WebError(self_media_core::error::AppError::auth(
+            self_media_core::error::AUTH_006,
+            "无权访问此任务",
+        )));
+    }
     Ok(ApiOk(TaskResponse { task }))
 }
 
 async fn cancel_task(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiOk<()>, WebError> {
     let scheduler = state.task_scheduler.lock().await;
+    // 权限校验：只能取消自己的任务
+    let task = scheduler.get_task(&id).await?;
+    if task.user_id != auth.user_id {
+        return Err(WebError(self_media_core::error::AppError::auth(
+            self_media_core::error::AUTH_006,
+            "无权操作此任务",
+        )));
+    }
     scheduler.cancel_task(&id).await?;
     Ok(ApiOk(()))
 }
 
 async fn execute_task(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
+    auth: AuthUser,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<ApiOk<()>, WebError> {
-    tracing::info!("任务执行请求: {}", id);
+    let scheduler = state.task_scheduler.lock().await;
+    
+    // 权限校验：只能执行自己的任务
+    let task = scheduler.get_task(&id).await?;
+    if task.user_id != auth.user_id {
+        return Err(WebError(self_media_core::error::AppError::auth(
+            self_media_core::error::AUTH_006,
+            "无权操作此任务",
+        )));
+    }
+    
+    // 获取用户密钥
+    let user_key = state
+        .user_key_cache
+        .get_or_derive(auth.user_id, &state.db, None)
+        .await
+        .map_err(|e| WebError(e))?;
+    
+    // 创建执行上下文
+    let ctx = ExecutionContext {
+        task: task.clone(),
+        user_id: auth.user_id,
+        user_key: (*user_key).clone(),
+        config_service: state.config_service.clone(),
+        db: state.db.clone(),
+    };
+    
+    // 根据任务模式执行
+    let result = match task.mode {
+        self_media_core::types::TaskMode::Text => {
+            TaskExecutor::execute_text_mode(&ctx).await
+        }
+        self_media_core::types::TaskMode::Video => {
+            TaskExecutor::execute_video_mode(&ctx).await
+        }
+    };
+    
+    match result {
+        Ok(execution_result) => {
+            if execution_result.success {
+                tracing::info!("任务 {} 执行成功", id);
+            } else {
+                tracing::warn!("任务 {} 执行失败: {:?}", id, execution_result.error_message);
+            }
+        }
+        Err(e) => {
+            tracing::error!("任务 {} 执行出错: {}", id, e);
+            ctx.mark_failed(&e.to_string()).await.ok();
+            return Err(WebError(e));
+        }
+    }
+    
     Ok(ApiOk(()))
 }

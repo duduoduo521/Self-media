@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
 
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
@@ -146,11 +145,10 @@ impl TaskScheduler {
     // ---- 内部方法 ----
 
     async fn update_task_status(&self, task_id: &str, status: &TaskStatus) -> Result<(), AppError> {
-        let status_str = serde_json::to_string(status)?;
         sqlx::query(
             "UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ?"
         )
-        .bind(&status_str)
+        .bind(status)
         .bind(task_id)
         .execute(&self.db)
         .await?;

@@ -56,6 +56,8 @@ impl HotspotService {
         let results: Vec<Result<Vec<Hotspot>, AppError>> = futures::future::join_all(vec![
             Box::pin(self.fetch_weibo()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
             Box::pin(self.fetch_bilibili()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
+            Box::pin(self.fetch_douyin()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
+            Box::pin(self.fetch_zhihu()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
         ]).await;
 
         let mut all = Vec::new();
@@ -85,7 +87,13 @@ impl HotspotService {
         match source {
             HotspotSource::Weibo => self.fetch_weibo().await,
             HotspotSource::Bilibili => self.fetch_bilibili().await,
-            _ => Err(AppError::ai(AI_002, &format!("{:?} 热点源暂未实现", source))),
+            HotspotSource::Douyin => self.fetch_douyin().await,
+            HotspotSource::Zhihu => self.fetch_zhihu().await,
+            // 头条和小红书需要登录态，暂返回空
+            HotspotSource::Toutiao | HotspotSource::Xiaohongshu => {
+                tracing::warn!("{:?} 需要登录态，暂时返回空列表", source);
+                Ok(Vec::new())
+            }
         }
     }
 
@@ -93,6 +101,7 @@ impl HotspotService {
         let resp = self.http
             .get("https://weibo.com/ajax/side/hotSearch")
             .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+            .header("Referer", "https://weibo.com/")
             .send()
             .await?
             .json::<serde_json::Value>()
@@ -134,6 +143,81 @@ impl HotspotService {
                     category: None,
                     fetched_at: Utc::now(),
                 });
+            }
+        }
+        Ok(hotspots)
+    }
+
+    /// 抖音热搜
+    /// API: https://www.douyin.com/aweme/v1/web/hot/search/list/
+    async fn fetch_douyin(&self) -> Result<Vec<Hotspot>, AppError> {
+        let resp = self.http
+            .get("https://www.douyin.com/aweme/v1/web/hot/search/list/")
+            .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)")
+            .header("Referer", "https://www.douyin.com/")
+            .query(&[
+                ("device_platform", "webapp"),
+                ("aid", "6383"),
+                ("channel", "channel_pc_web"),
+                ("detail_list", "1"),
+            ])
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let mut hotspots = Vec::new();
+        if let Some(data) = resp["data"]["word_list"].as_array() {
+            for item in data {
+                hotspots.push(Hotspot {
+                    title: item["word"].as_str().unwrap_or_default().to_string(),
+                    hot_score: item["hot_value"].as_u64().unwrap_or(0),
+                    source: HotspotSource::Douyin,
+                    url: item["scheme"].as_str().map(|s| s.to_string()),
+                    category: item["word_type"].as_i64().map(|i| match i {
+                        1 => "新词".to_string(),
+                        2 => "推荐".to_string(),
+                        3 => "热搜".to_string(),
+                        _ => "普通".to_string(),
+                    }),
+                    fetched_at: Utc::now(),
+                });
+            }
+        }
+        Ok(hotspots)
+    }
+
+    /// 知乎热榜
+    /// API: https://www.zhihu.com/api/v4/search-top/search-result
+    async fn fetch_zhihu(&self) -> Result<Vec<Hotspot>, AppError> {
+        let resp = self.http
+            .get("https://www.zhihu.com/api/v4/search-top/search-result")
+            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+            .header("Referer", "https://www.zhihu.com/")
+            .header("Cookie", "os=iOS")
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let mut hotspots = Vec::new();
+        if let Some(data) = resp["data"].as_array() {
+            for (idx, item) in data.iter().enumerate() {
+                if let Some(target) = item["target"].as_object() {
+                    let title = target["title"].as_str()
+                        .or(target["question"].as_object()
+                            .and_then(|q| q["title"].as_str()))
+                        .unwrap_or_default().to_string();
+                    
+                    hotspots.push(Hotspot {
+                        title,
+                        hot_score: ((data.len() - idx) as u64) * 100, // 知乎无热度值，用排名估算
+                        source: HotspotSource::Zhihu,
+                        url: target["url"].as_str().map(|s| s.replace("\\", "")),
+                        category: item["type"].as_str().map(|s| s.to_string()),
+                        fetched_at: Utc::now(),
+                    });
+                }
             }
         }
         Ok(hotspots)

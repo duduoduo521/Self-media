@@ -45,7 +45,7 @@ impl UserService {
     }
 
     /// 登录
-    pub async fn login(&self, username: &str, password: &str) -> Result<Session, AppError> {
+    pub async fn login(&self, username: &str, password: &str) -> Result<(Session, UserKey), AppError> {
         let user: Option<User> = sqlx::query_as(
             "SELECT * FROM users WHERE username = ?"
         )
@@ -59,7 +59,10 @@ impl UserService {
             return Err(AppError::auth(AUTH_002, "用户名或密码错误"));
         }
 
-        self.create_session(user.id).await
+        // 派生用户密钥用于后续加密操作
+        let user_key = UserKey::derive_from_password(password, &user.salt)?;
+        let session = self.create_session(user.id).await?;
+        Ok((session, user_key))
     }
 
     /// 密码修改（含重加密）

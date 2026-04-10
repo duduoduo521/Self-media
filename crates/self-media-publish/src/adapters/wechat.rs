@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 
 use self_media_core::types::{
-    ArticleContent, CookieStatus, Platform, PlatformCredential, PublishResult, VideoContent,
+    ArticleContent, Platform, PlatformCredential, PublishResult, VideoContent,
 };
 
 use crate::publisher::{PlatformPublisher, PublishError};
@@ -171,7 +171,7 @@ impl WeChatPublisher {
     /// 上传缩略图素材
     async fn upload_thumb_media(
         &self,
-        credential: &PlatformCredential,
+        _credential: &PlatformCredential,
         _image_url: &str,
     ) -> Result<String, PublishError> {
         // 下载图片并上传为素材

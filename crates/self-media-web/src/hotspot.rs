@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 pub struct FetchAllQuery {
+    #[allow(dead_code)]
     pub force_refresh: Option<bool>,
 }
 
