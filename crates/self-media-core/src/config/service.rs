@@ -87,7 +87,7 @@ impl ConfigService {
         .await?;
 
         let (encrypted_key, region_str) = row
-            .ok_or(AppError::config(CONFIG_001, &format!("未配置 {} API Key", provider)))?;
+            .ok_or(AppError::config(CONFIG_001, format!("未配置 {} API Key", provider)))?;
 
         let decrypted_key = user_key.decrypt(&encrypted_key)?;
         let region = match region_str.as_str() {

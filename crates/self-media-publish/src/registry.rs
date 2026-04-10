@@ -9,6 +9,12 @@ pub struct PublisherRegistry {
     publishers: HashMap<Platform, Box<dyn PlatformPublisher>>,
 }
 
+impl Default for PublisherRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PublisherRegistry {
     pub fn new() -> Self {
         Self {

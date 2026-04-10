@@ -38,7 +38,7 @@ pub struct TaskExecutor;
 impl TaskExecutor {
     /// 执行图文模式任务
     pub async fn execute_text_mode(ctx: &ExecutionContext) -> Result<ExecutionResult, AppError> {
-        let mut results = Vec::new();
+        let results = Vec::new();
         
         // 获取 API Key
         let (api_key, region) = ctx.config_service
@@ -59,8 +59,7 @@ impl TaskExecutor {
             .map_err(|e| AppError::ai(AI_001, e.to_string()))?;
         
         let generated_text = text_result.choices
-            .first()
-            .and_then(|c| Some(c.message.content.clone()))
+            .first().map(|c| c.message.content.clone())
             .unwrap_or_default();
         
         // ===== 步骤 2: AI 图片生成 =====

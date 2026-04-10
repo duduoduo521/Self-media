@@ -35,3 +35,8 @@ export const taskApi = {
     return http.post(`/tasks/${id}/execute`)
   },
 }
+
+export async function createTask(data: { mode: string; topic: string; platforms: string[]; config?: Record<string, any> }) {
+  const response = await http.post<{ task: Task }>('/tasks', data)
+  return response.task
+}

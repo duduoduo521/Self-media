@@ -62,8 +62,8 @@ impl UserKey {
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
             .map_err(|_| CryptoError::Decrypt("解密失败，密钥可能已变更".into()))?;
-        Ok(String::from_utf8(plaintext)
-            .map_err(|_| CryptoError::Encoding("解密结果非有效 UTF-8".into()))?)
+        String::from_utf8(plaintext)
+            .map_err(|_| CryptoError::Encoding("解密结果非有效 UTF-8".into()))
     }
 
     /// 零化密钥内存

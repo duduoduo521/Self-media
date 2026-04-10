@@ -72,7 +72,7 @@ impl QrLoginHandler for ToutiaoQrLogin {
         Ok(QrCodeStatus::Pending)
     }
     
-    async fn confirm_login(&self, _http: &Client, qr_id: &str) -> Result<PlatformCredential, PublishError> {
+    async fn confirm_login(&self, _http: &Client, _qr_id: &str) -> Result<PlatformCredential, PublishError> {
         // 头条扫码登录实际上是通过 OAuth 回调 URL 携带 code 参数
         // 前端需要打开授权页面，让用户授权后获取 callback URL 中的 code
         // 然后调用后端 /api/qr/confirm 接口，传入 code

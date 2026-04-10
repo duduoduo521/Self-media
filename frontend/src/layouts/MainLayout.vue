@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, type FunctionalComponent } from 'vue'
+import { ref, computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NSpace } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
@@ -32,6 +32,8 @@ import {
   FlameOutline,
   ListOutline,
   SettingsOutline,
+  GridOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import { useUserStore } from '@/stores/user'
 
@@ -40,15 +42,13 @@ const route = useRoute()
 const userStore = useUserStore()
 const collapsed = ref(false)
 
-function renderIcon(icon: FunctionalComponent) {
-  return () => h(icon)
-}
-
 const menuOptions: MenuOption[] = [
-  { label: '仪表盘', key: 'Dashboard', icon: renderIcon(HomeOutline) },
-  { label: '热点发现', key: 'Hotspot', icon: renderIcon(FlameOutline) },
-  { label: '任务管理', key: 'Tasks', icon: renderIcon(ListOutline) },
-  { label: '系统设置', key: 'Settings', icon: renderIcon(SettingsOutline) },
+  { label: '仪表盘', key: 'Dashboard', icon: () => h(HomeOutline) },
+  { label: '热点发现', key: 'Hotspot', icon: () => h(FlameOutline) },
+  { label: '创作中心', key: 'Create', icon: () => h(CreateOutline) },
+  { label: '任务管理', key: 'Tasks', icon: () => h(ListOutline) },
+  { label: '平台管理', key: 'Platforms', icon: () => h(GridOutline) },
+  { label: '系统设置', key: 'Settings', icon: () => h(SettingsOutline) },
 ]
 
 const activeKey = computed(() => route.name as string)

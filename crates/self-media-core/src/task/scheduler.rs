@@ -37,7 +37,7 @@ impl TaskScheduler {
     ) -> Result<Task, AppError> {
         let active = self.active_count.load(Ordering::Relaxed);
         if active >= self.concurrent_limit {
-            return Err(AppError::task(TASK_003, &format!(
+            return Err(AppError::task(TASK_003, format!(
                 "并发任务数已达上限 ({}/{}), 请等待", active, self.concurrent_limit
             )));
         }

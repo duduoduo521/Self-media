@@ -70,11 +70,7 @@ impl PlatformPublisher for BilibiliPublisher {
             .ok_or_else(|| PublishError::CookieExpired("缺少 bili_jct (CSRF Token)".into()))?;
 
         // 先上传文章封面
-        let banner_url = if let Some(first_img) = content.image_urls.first() {
-            Some(first_img.clone())
-        } else {
-            None
-        };
+        let banner_url = content.image_urls.first().map(|first_img| first_img.clone());
 
         let mut body = serde_json::Map::new();
         body.insert("title".into(), serde_json::Value::String(content.title.clone()));
@@ -146,13 +142,13 @@ impl PlatformPublisher for BilibiliPublisher {
         let upload_info: serde_json::Value = upload_resp.json().await
             .map_err(|e| PublishError::PlatformError(format!("获取上传信息失败: {}", e)))?;
 
-        let bili_msg = upload_info["data"]["bili_msg"]
+        let _bili_msg = upload_info["data"]["bili_msg"]
             .as_str()
             .unwrap_or_default();
 
         // 3. 分片上传视频
         let chunk_size = 4 * 1024 * 1024; // 4MB 分片
-        let total_chunks = (video_data.len() + chunk_size - 1) / chunk_size;
+        let total_chunks = video_data.len().div_ceil(chunk_size);
         let upload_id = uuid::Uuid::new_v4().to_string().replace("-", "");
 
         for (i, chunk) in video_data.chunks(chunk_size).enumerate() {

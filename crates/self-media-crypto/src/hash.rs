@@ -9,7 +9,7 @@ use crate::{ARGON2_HASH_LENGTH, ARGON2_LANES, ARGON2_MEM_COST, ARGON2_TIME_COST,
 pub fn generate_salt() -> String {
     let mut salt = [0u8; 16];
     OsRng.fill_bytes(&mut salt);
-    BASE64.encode(&salt)
+    BASE64.encode(salt)
 }
 
 /// 密码哈希（使用 Argon2id）
@@ -32,7 +32,7 @@ pub fn hash_password(password: &str, salt_b64: &str) -> Result<String, CryptoErr
     let mut hash = [0u8; 32];
     argon2.hash_password_into(password.as_bytes(), &salt, &mut hash)?;
 
-    Ok(BASE64.encode(&hash))
+    Ok(BASE64.encode(hash))
 }
 
 /// 密码验证（恒定时间比较，防时序攻击）

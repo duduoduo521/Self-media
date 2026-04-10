@@ -309,6 +309,12 @@ pub struct SourceRateLimiter {
     min_interval: Duration,
 }
 
+impl Default for SourceRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SourceRateLimiter {
     pub fn new() -> Self {
         Self {
