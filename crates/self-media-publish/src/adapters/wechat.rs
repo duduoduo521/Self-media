@@ -169,13 +169,56 @@ impl PlatformPublisher for WeChatPublisher {
 
 impl WeChatPublisher {
     /// 上传缩略图素材
+    /// 公众号缩略图需要：1. 下载图片 2. 上传到素材库获取 media_id
     async fn upload_thumb_media(
         &self,
-        _credential: &PlatformCredential,
-        _image_url: &str,
+        credential: &PlatformCredential,
+        image_url: &str,
     ) -> Result<String, PublishError> {
-        // 下载图片并上传为素材
-        // 骨架实现
-        Err(PublishError::UploadFailed("缩略图上传暂未实现".into()))
+        // 1. 下载图片
+        let image_data = self.http
+            .get(image_url)
+            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+            .send()
+            .await
+            .map_err(|e| PublishError::UploadFailed(format!("下载图片失败: {}", e)))?
+            .bytes()
+            .await
+            .map_err(|e| PublishError::UploadFailed(format!("读取图片失败: {}", e)))?;
+
+        // 2. 上传为永久图片素材（缩略图）
+        let form = reqwest::multipart::Form::new()
+            .part("media", reqwest::multipart::Part::bytes(image_data.to_vec())
+                .file_name("thumb.jpg")
+                .mime_str("image/jpeg")
+                .map_err(|e| PublishError::UploadFailed(e.to_string()))?
+            );
+
+        let access_token = credential.extra.get("access_token")
+            .ok_or_else(|| PublishError::UploadFailed("缺少 access_token".to_string()))?;
+
+        let resp = self.http
+            .post("https://api.weixin.qq.com/cgi-bin/material/add_material")
+            .header("Cookie", &credential.cookies)
+            .query(&[
+                ("access_token", access_token.as_str()),
+                ("type", "image"),
+            ])
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| PublishError::UploadFailed(format!("上传素材失败: {}", e)))?;
+
+        let result: serde_json::Value = resp.json().await
+            .map_err(|e| PublishError::UploadFailed(format!("解析响应失败: {}", e)))?;
+
+        // 返回 media_id
+        result["media_id"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                let err_msg = result["errmsg"].as_str().unwrap_or("缩略图上传失败");
+                PublishError::UploadFailed(err_msg.to_string())
+            })
     }
 }

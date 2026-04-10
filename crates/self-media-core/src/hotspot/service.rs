@@ -58,6 +58,8 @@ impl HotspotService {
             Box::pin(self.fetch_bilibili()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
             Box::pin(self.fetch_douyin()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
             Box::pin(self.fetch_zhihu()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
+            Box::pin(self.fetch_toutiao()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
+            Box::pin(self.fetch_xiaohongshu()) as std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Hotspot>, AppError>> + Send>>,
         ]).await;
 
         let mut all = Vec::new();
@@ -89,11 +91,8 @@ impl HotspotService {
             HotspotSource::Bilibili => self.fetch_bilibili().await,
             HotspotSource::Douyin => self.fetch_douyin().await,
             HotspotSource::Zhihu => self.fetch_zhihu().await,
-            // 头条和小红书需要登录态，暂返回空
-            HotspotSource::Toutiao | HotspotSource::Xiaohongshu => {
-                tracing::warn!("{:?} 需要登录态，暂时返回空列表", source);
-                Ok(Vec::new())
-            }
+            HotspotSource::Toutiao => self.fetch_toutiao().await,
+            HotspotSource::Xiaohongshu => self.fetch_xiaohongshu().await,
         }
     }
 
@@ -218,6 +217,86 @@ impl HotspotService {
                         fetched_at: Utc::now(),
                     });
                 }
+            }
+        }
+        Ok(hotspots)
+    }
+
+    /// 头条热搜
+    /// API: https://www.toutiao.com/c/sr/250094470/
+    async fn fetch_toutiao(&self) -> Result<Vec<Hotspot>, AppError> {
+        let resp = self.http
+            .get("https://www.toutiao.com/api/pc/feed/")
+            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+            .header("Referer", "https://www.toutiao.com/")
+            .query(&[
+                ("max_behot_time", "0"),
+                ("cat", "250094470"),
+                ("keep_items", "[]"),
+            ])
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let mut hotspots = Vec::new();
+        if let Some(data) = resp["data"].as_array() {
+            for item in data {
+                let title = item["title"].as_str().unwrap_or_default().to_string();
+                if title.is_empty() {
+                    continue;
+                }
+                hotspots.push(Hotspot {
+                    title,
+                    hot_score: item["go_detail_count"].as_u64().unwrap_or(0),
+                    source: HotspotSource::Toutiao,
+                    url: item["article_url"].as_str().map(|s| s.to_string()),
+                    category: item["tag"].as_str().map(|s| s.to_string()),
+                    fetched_at: Utc::now(),
+                });
+            }
+        }
+        Ok(hotspots)
+    }
+
+    /// 小红书热榜（笔记搜索）
+    /// API: https://edith.xiaohongshu.com/api/sns/web/v1/search/notes
+    async fn fetch_xiaohongshu(&self) -> Result<Vec<Hotspot>, AppError> {
+        // 小红书搜索 API
+        let resp = self.http
+            .post("https://edith.xiaohongshu.com/api/sns/web/v1/search/notes")
+            .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)")
+            .header("Content-Type", "application/json")
+            .header("Referer", "https://www.xiaohongshu.com/")
+            .json(&serde_json::json!({
+                "keyword": "热搜",
+                "page": 1,
+                "page_size": 20,
+                "search_id": "",
+                "sort": "general",
+                "note_type": 0
+            }))
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let mut hotspots = Vec::new();
+        if let Some(items) = resp["data"]["items"].as_array() {
+            for item in items {
+                let note_card = &item["note_card"];
+                let title = note_card["title"].as_str().unwrap_or_default().to_string();
+                if title.is_empty() {
+                    continue;
+                }
+                hotspots.push(Hotspot {
+                    title,
+                    hot_score: note_card["liked_count"].as_u64().unwrap_or(0),
+                    source: HotspotSource::Xiaohongshu,
+                    url: note_card["share_url"].as_str().map(|s| s.to_string()),
+                    category: note_card["type"].as_str().map(|s| s.to_string()),
+                    fetched_at: Utc::now(),
+                });
             }
         }
         Ok(hotspots)
