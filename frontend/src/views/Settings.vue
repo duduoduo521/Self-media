@@ -47,7 +47,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import type { FormInst } from 'naive-ui'
-import { NCard, NForm, NFormItem, NInput, NSelect, NSpace, NButton, NSwitch, NDynamicTags, useMessage } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NSelect, NSpace, NButton, NSwitch, NDynamicTags, NRadio, NRadioGroup, useMessage } from 'naive-ui'
 import { authApi } from '@/api/auth'
 import { configApi, type UserPreferences } from '@/api/config'
 import { useUserStore } from '@/stores/user'
