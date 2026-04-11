@@ -2,18 +2,27 @@ import http from './http'
 
 export interface Hotspot {
   title: string
-  hot_score: number
+  snippet?: string
+  hot_score?: number
   source: string
-  url: string | null
-  category: string | null
-  fetched_at: string
+  url?: string
+  category?: string
+}
+
+export interface HotspotListResponse {
+  hotspots: Hotspot[]
 }
 
 export const hotspotApi = {
-  fetchAll(forceRefresh = false) {
-    return http.get<{ hotspots: Hotspot[] }>('/hotspot', { params: { force_refresh: forceRefresh } })
+  searchByKeyword(keyword: string) {
+    return http.get<HotspotListResponse>('/hotspot/search', { params: { keyword } })
   },
-  fetchBySource(source: string) {
-    return http.get<{ hotspots: Hotspot[] }>(`/hotspot/${source}`)
+
+  fetchAll(forceRefresh = false) {
+    return http.get<HotspotListResponse>('/hotspot', { params: { force_refresh: forceRefresh } })
+  },
+
+  fetchBySource(source: string, forceRefresh = false) {
+    return http.get<HotspotListResponse>(`/hotspot/${source}`, { params: { force_refresh: forceRefresh } })
   },
 }

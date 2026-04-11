@@ -153,6 +153,17 @@ impl UserService {
         Ok(())
     }
 
+    pub async fn get_user_minimax_key(&self, user_id: i64) -> Result<String, AppError> {
+        let api_key: Option<String> = sqlx::query_scalar(
+            "SELECT minimax_api_key FROM users WHERE id = ?"
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        api_key.ok_or(AppError::config(CONFIG_001, "用户不存在或API Key未设置"))
+    }
+
     // ---- 内部方法 ----
 
     async fn create_session(&self, user_id: i64) -> Result<Session, AppError> {

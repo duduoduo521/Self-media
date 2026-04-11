@@ -53,7 +53,7 @@ impl HotspotService {
     }
 
     /// 获取所有平台热点（带缓存）
-    pub async fn fetch_all(&self) -> Result<Vec<Hotspot>, AppError> {
+    pub async fn fetch_all(&self, force_refresh: bool) -> Result<Vec<Hotspot>, AppError> {
         let sources = vec![
             HotspotSource::Weibo,
             HotspotSource::Bilibili,
@@ -66,7 +66,7 @@ impl HotspotService {
         let mut results: Vec<Hotspot> = Vec::new();
 
         for source in sources {
-            match self.fetch_by_source_internal(&source).await {
+            match self.fetch_by_source_internal(&source, force_refresh).await {
                 Ok(hotspots) => results.extend(hotspots),
                 Err(e) => {
                     tracing::warn!("热点数据源 {:?} 获取失败: {}", source, e);
@@ -81,19 +81,21 @@ impl HotspotService {
     }
 
     /// 获取指定来源的热点（使用缓存）
-    pub async fn fetch_by_source(&self, source: HotspotSource) -> Result<Vec<Hotspot>, AppError> {
-        if let Some(cached) = {
-            let cache = self.cache.lock().unwrap();
-            cache.get(&source).filter(|c| c.is_valid()).map(|c| c.data.clone())
-        } {
-            return Ok(cached);
+    pub async fn fetch_by_source(&self, source: HotspotSource, force_refresh: bool) -> Result<Vec<Hotspot>, AppError> {
+        if !force_refresh {
+            if let Some(cached) = {
+                let cache = self.cache.lock().unwrap();
+                cache.get(&source).filter(|c| c.is_valid()).map(|c| c.data.clone())
+            } {
+                return Ok(cached);
+            }
         }
 
-        self.fetch_by_source_internal(&source).await
+        self.fetch_by_source_internal(&source, force_refresh).await
     }
 
     /// 内部方法：获取指定来源的热点（强制刷新）
-    async fn fetch_by_source_internal(&self, source: &HotspotSource) -> Result<Vec<Hotspot>, AppError> {
+    async fn fetch_by_source_internal(&self, source: &HotspotSource, _force_refresh: bool) -> Result<Vec<Hotspot>, AppError> {
         self.rate_limiter.acquire(source).await;
 
         let hotspots = match source {
@@ -145,7 +147,7 @@ impl HotspotService {
 
     async fn fetch_bilibili(&self) -> Result<Vec<Hotspot>, AppError> {
         let resp = self.http
-            .get("https://api.bilibili.com/x/web-interface/search/square?limit=50")
+            .get("https://s.search.bilibili.com/main/hotword")
             .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
             .send()
             .await?
@@ -153,11 +155,11 @@ impl HotspotService {
             .await?;
 
         let mut hotspots = Vec::new();
-        if let Some(data) = resp["data"]["trending"].as_array() {
-            for item in data {
+        if let Some(data) = resp["data"].as_array() {
+            for (idx, item) in data.iter().enumerate() {
                 hotspots.push(Hotspot {
                     title: item["keyword"].as_str().unwrap_or_default().to_string(),
-                    hot_score: item["heat_score"].as_u64().unwrap_or(0),
+                    hot_score: item["hot_score"].as_u64().unwrap_or(((data.len() - idx) as u64) * 100),
                     source: HotspotSource::Bilibili,
                     url: None,
                     category: None,
@@ -208,13 +210,13 @@ impl HotspotService {
     }
 
     /// 知乎热榜
-    /// API: https://www.zhihu.com/api/v4/search-top/search-result
+    /// API: https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total
     async fn fetch_zhihu(&self) -> Result<Vec<Hotspot>, AppError> {
         let resp = self.http
-            .get("https://www.zhihu.com/api/v4/search-top/search-result")
+            .get("https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total")
             .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
             .header("Referer", "https://www.zhihu.com/")
-            .header("Cookie", "os=iOS")
+            .header("Cookie", "zhalodata=undefined; qdr=1")
             .send()
             .await?
             .json::<serde_json::Value>()
@@ -223,21 +225,22 @@ impl HotspotService {
         let mut hotspots = Vec::new();
         if let Some(data) = resp["data"].as_array() {
             for (idx, item) in data.iter().enumerate() {
-                if let Some(target) = item["target"].as_object() {
-                    let title = target["title"].as_str()
-                        .or(target["question"].as_object()
-                            .and_then(|q| q["title"].as_str()))
-                        .unwrap_or_default().to_string();
-                    
-                    hotspots.push(Hotspot {
-                        title,
-                        hot_score: ((data.len() - idx) as u64) * 100, // 知乎无热度值，用排名估算
-                        source: HotspotSource::Zhihu,
-                        url: target["url"].as_str().map(|s| s.replace("\\", "")),
-                        category: item["type"].as_str().map(|s| s.to_string()),
-                        fetched_at: Utc::now(),
-                    });
-                }
+                let title = item["target"]["title"].as_str()
+                    .or(item["title"].as_str())
+                    .unwrap_or_default().to_string();
+
+                let hot_score = item["score"].as_u64()
+                    .or_else(|| item["hot_score"].as_u64())
+                    .unwrap_or(((data.len() - idx) as u64) * 100);
+
+                hotspots.push(Hotspot {
+                    title,
+                    hot_score,
+                    source: HotspotSource::Zhihu,
+                    url: item["url"].as_str().map(|s| s.to_string()),
+                    category: item["type"].as_str().map(|s| s.to_string()),
+                    fetched_at: Utc::now(),
+                });
             }
         }
         Ok(hotspots)

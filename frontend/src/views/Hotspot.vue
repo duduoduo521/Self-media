@@ -1,85 +1,140 @@
 <template>
   <n-space vertical :size="16">
-    <n-card>
-      <n-space>
-        <n-select v-model:value="selectedSource" :options="sourceOptions" placeholder="选择热点源" style="width: 200px" clearable />
-        <n-button type="primary" :loading="loading" @click="fetchHotspots">刷新</n-button>
-      </n-space>
-    </n-card>
+    <n-tabs v-model:value="activeTab" type="line" @update:value="handleTabChange">
+      <n-tab name="search">关键词搜索</n-tab>
+      <n-tab name="Weibo">微博</n-tab>
+      <n-tab name="Douyin">抖音</n-tab>
+      <n-tab name="Toutiao">头条</n-tab>
+    </n-tabs>
 
-    <n-grid :cols="1" :y-gap="12">
-      <n-gi v-for="item in hotspots" :key="item.title + item.source">
-        <n-card hoverable size="small">
-          <template #header>
-            <n-space align="center">
-              <n-tag :type="sourceTagType(item.source)" size="small">{{ item.source }}</n-tag>
-              <span>{{ item.title }}</span>
-            </n-space>
-          </template>
-          <template #header-extra>
-            <n-text depth="3">{{ formatScore(item.hot_score) }}</n-text>
-          </template>
-          <n-space v-if="item.category" :size="8">
-            <n-tag size="tiny">{{ item.category }}</n-tag>
+    <div v-if="activeTab === 'search'">
+      <n-card>
+        <n-space vertical>
+          <n-space align="center">
+            <n-input v-model:value="searchKeyword" placeholder="输入搜索关键词，如：AI、科技、美食" style="width: 300px" @keyup.enter="handleSearch" />
+            <n-button type="primary" :loading="loading" @click="handleSearch">搜索热点</n-button>
           </n-space>
-        </n-card>
-      </n-gi>
-    </n-grid>
+          <n-text depth="3" style="font-size: 12px">输入您的垂直领域关键词，系统将获取相关的最新热点</n-text>
+        </n-space>
+      </n-card>
 
-    <n-empty v-if="!loading && hotspots.length === 0" description="暂无热点数据" />
+      <n-spin :show="loading">
+        <n-grid :cols="1" :y-gap="12" style="margin-top: 16px">
+          <n-gi v-for="(item, idx) in hotspots" :key="idx">
+            <n-card hoverable size="small">
+              <template #header>
+                <n-space align="center">
+                  <n-tag type="info" size="small">{{ idx + 1 }}</n-tag>
+                  <span>{{ item.title }}</span>
+                </n-space>
+              </template>
+              <template #header-extra>
+                <n-text depth="3">{{ item.source }}</n-text>
+              </template>
+              <n-space v-if="item.snippet" :size="8">
+                <n-text depth="2" style="font-size: 13px">{{ item.snippet }}</n-text>
+              </n-space>
+            </n-card>
+          </n-gi>
+        </n-grid>
+
+        <n-empty v-if="!loading && hotspots.length === 0 && hasSearched" description="暂无热点数据，请尝试其他关键词" style="margin-top: 40px" />
+        <n-empty v-if="!loading && hotspots.length === 0 && !hasSearched" description="输入关键词搜索热点" style="margin-top: 40px" />
+      </n-spin>
+    </div>
+
+    <div v-else>
+      <n-space justify="end" style="margin-bottom: 12px">
+        <n-button size="small" @click="loadHotspots(true)">刷新</n-button>
+      </n-space>
+
+      <n-spin :show="loading">
+        <n-grid :cols="1" :y-gap="12">
+          <n-gi v-for="(item, idx) in platformHotspots" :key="idx">
+            <n-card hoverable size="small">
+              <template #header>
+                <n-space align="center">
+                  <n-tag type="warning" size="small">{{ idx + 1 }}</n-tag>
+                  <span>{{ item.title }}</span>
+                </n-space>
+              </template>
+              <template #header-extra>
+                <n-text depth="3">{{ item.hot_score }}</n-text>
+              </template>
+              <n-space v-if="item.category" :size="8">
+                <n-text depth="2" style="font-size: 13px">{{ item.category }}</n-text>
+              </n-space>
+            </n-card>
+          </n-gi>
+        </n-grid>
+
+        <n-empty v-if="!loading && platformHotspots.length === 0" description="暂无热点数据" style="margin-top: 40px" />
+      </n-spin>
+    </div>
   </n-space>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NSpace, NSelect, NButton, NGrid, NGi, NTag, NText, NEmpty } from 'naive-ui'
-import { hotspotApi, type Hotspot } from '@/api/hotspot'
+import { NSpin, NCard, NSpace, NInput, NButton, NTag, NText, NEmpty, NGrid, NGi, NTabs, NTab } from 'naive-ui'
+import { hotspotApi } from '@/api/hotspot'
 
+interface Hotspot {
+  title: string
+  snippet?: string
+  hot_score?: number
+  source: string
+  url?: string
+  category?: string
+}
+
+const activeTab = ref('search')
+const searchKeyword = ref('')
 const hotspots = ref<Hotspot[]>([])
+const platformHotspots = ref<Hotspot[]>([])
 const loading = ref(false)
-const selectedSource = ref<string | null>(null)
+const hasSearched = ref(false)
 
-const sourceOptions = [
-  { label: '全部', value: '' },
-  { label: '微博', value: 'Weibo' },
-  { label: 'B站', value: 'Bilibili' },
-  { label: '抖音', value: 'Douyin' },
-  { label: '小红书', value: 'Xiaohongshu' },
-  { label: '今日头条', value: 'Toutiao' },
-  { label: '知乎', value: 'Zhihu' },
-]
+async function handleSearch() {
+  if (!searchKeyword.value.trim()) return
 
-function sourceTagType(source: string) {
-  const map: Record<string, string> = {
-    Weibo: 'error',
-    Bilibili: 'info',
-    Douyin: 'warning',
-    Xiaohongshu: 'success',
-    Toutiao: 'default',
-    Zhihu: 'default',
-  }
-  return (map[source] || 'default') as any
-}
-
-function formatScore(score: number) {
-  if (score >= 10000) return (score / 10000).toFixed(1) + '万'
-  return String(score)
-}
-
-async function fetchHotspots() {
   loading.value = true
+  hasSearched.value = true
   try {
-    if (selectedSource.value) {
-      const { data } = await hotspotApi.fetchBySource(selectedSource.value)
-      hotspots.value = data.hotspots
-    } else {
-      const { data } = await hotspotApi.fetchAll(true)
-      hotspots.value = data.hotspots
-    }
-  } catch {} finally {
+    const { data } = await hotspotApi.searchByKeyword(searchKeyword.value.trim())
+    hotspots.value = data.hotspots
+  } catch {
+    hotspots.value = []
+  } finally {
     loading.value = false
   }
 }
 
-onMounted(fetchHotspots)
+async function handleTabChange(tab: string) {
+  if (tab !== 'search') {
+    loadPlatformHotspots(tab)
+  }
+}
+
+async function loadPlatformHotspots(source: string) {
+  loading.value = true
+  platformHotspots.value = []
+  try {
+    const { data } = await hotspotApi.fetchBySource(source)
+    platformHotspots.value = data.hotspots
+  } catch {
+    platformHotspots.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadHotspots(forceRefresh = false) {
+  if (!activeTab.value || activeTab.value === 'search') return
+  await loadPlatformHotspots(activeTab.value)
+}
+
+onMounted(() => {
+  loadHotspots()
+})
 </script>
