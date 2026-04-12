@@ -9,6 +9,7 @@ use axum::{
 use self_media_core::error::AUTH_006;
 use self_media_core::user::model::{RegisterRequest as CoreRegisterRequest, RegisterResponse, Session, UserInfo};
 use crate::AppError;
+use crate::csrf::generate_csrf_token;
 use serde::Deserialize;
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
@@ -30,12 +31,22 @@ impl IntoResponse for LoginResponse {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
         let cookie = format!(
-            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
+            "token={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800",
             self.token
         );
-        headers.insert(
+        headers.append(
             axum::http::header::SET_COOKIE,
             HeaderValue::from_str(&cookie).unwrap(),
+        );
+        // 生成 CSRF token（非 HttpOnly，前端需要读取放入请求头）
+        let csrf_token = generate_csrf_token();
+        let csrf_cookie = format!(
+            "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400",
+            csrf_token
+        );
+        headers.append(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(&csrf_cookie).unwrap(),
         );
         (
             StatusCode::OK,
@@ -67,12 +78,22 @@ impl IntoResponse for RegisterResponseWrapper {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
         let cookie = format!(
-            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
+            "token={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800",
             self.token
         );
-        headers.insert(
+        headers.append(
             axum::http::header::SET_COOKIE,
             HeaderValue::from_str(&cookie).unwrap(),
+        );
+        // 生成 CSRF token（非 HttpOnly，前端需要读取放入请求头）
+        let csrf_token = generate_csrf_token();
+        let csrf_cookie = format!(
+            "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400",
+            csrf_token
+        );
+        headers.append(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(&csrf_cookie).unwrap(),
         );
         (
             StatusCode::OK,
@@ -151,10 +172,16 @@ impl IntoResponse for LogoutResponse {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
         // 清除 Cookie（设置过期时间为 0）
-        let cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0";
+        let cookie = "token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
         headers.insert(
             axum::http::header::SET_COOKIE,
             HeaderValue::from_str(cookie).unwrap(),
+        );
+        // 清除 CSRF token Cookie
+        let csrf_cookie = "csrf_token=; SameSite=Strict; Path=/; Max-Age=0";
+        headers.insert(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(csrf_cookie).unwrap(),
         );
         (StatusCode::OK, headers, Json(serde_json::json!({"code": "0", "message": "success"})))
             .into_response()

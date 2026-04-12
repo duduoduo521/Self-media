@@ -35,6 +35,7 @@ impl UserService {
 
         let salt = generate_salt();
         let password_hash = hash_password(&req.password, &salt)?;
+        let phone_value = req.phone.as_deref().unwrap_or("");
         let user: User = sqlx::query_as(
             "INSERT INTO users (username, password_hash, salt, email, minimax_api_key, phone) VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
         )
@@ -43,7 +44,7 @@ impl UserService {
         .bind(&salt)
         .bind(&req.email)
         .bind(&req.minimax_api_key)
-        .bind(&req.phone)
+        .bind(phone_value)
         .fetch_one(&self.db)
         .await?;
 
@@ -104,7 +105,6 @@ impl UserService {
         let new_password_hash = hash_password(new_password, &new_salt)?;
         let new_user_key = UserKey::derive_from_password(new_password, &new_salt)?;
 
-        self.reencrypt_api_keys(user_id, &old_user_key, &new_user_key).await?;
         self.reencrypt_platform_cookies(user_id, &old_user_key, &new_user_key).await?;
 
         sqlx::query(
@@ -164,6 +164,33 @@ impl UserService {
         api_key.ok_or(AppError::config(CONFIG_001, "用户不存在或API Key未设置"))
     }
 
+    pub async fn get_user_model_config(&self, user_id: i64) -> Result<UserModelConfig, AppError> {
+        let config: Option<UserModelConfig> = sqlx::query_as(
+            "SELECT text_model, image_model, video_model, speech_model, music_model FROM users WHERE id = ?"
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        config.ok_or(AppError::config(CONFIG_001, "用户不存在"))
+    }
+
+    pub async fn update_user_model_config(&self, user_id: i64, config: &UserModelConfig) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE users SET text_model = ?, image_model = ?, video_model = ?, speech_model = ?, music_model = ? WHERE id = ?"
+        )
+        .bind(&config.text_model)
+        .bind(&config.image_model)
+        .bind(&config.video_model)
+        .bind(&config.speech_model)
+        .bind(&config.music_model)
+        .bind(user_id)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
     // ---- 内部方法 ----
 
     async fn create_session(&self, user_id: i64) -> Result<Session, AppError> {
@@ -186,31 +213,6 @@ impl UserService {
         .bind(session.id)
         .execute(&self.db)
         .await?;
-        Ok(())
-    }
-
-    async fn reencrypt_api_keys(
-        &self,
-        user_id: i64,
-        old_key: &UserKey,
-        new_key: &UserKey,
-    ) -> Result<(), AppError> {
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT id, encrypted_key FROM api_keys WHERE user_id = ?"
-        )
-        .bind(user_id)
-        .fetch_all(&self.db)
-        .await?;
-
-        for (id, encrypted_key) in rows {
-            let plaintext = old_key.decrypt(&encrypted_key)?;
-            let new_encrypted = new_key.encrypt(&plaintext)?;
-            sqlx::query("UPDATE api_keys SET encrypted_key = ? WHERE id = ?")
-                .bind(&new_encrypted)
-                .bind(id)
-                .execute(&self.db)
-                .await?;
-        }
         Ok(())
     }
 
@@ -253,14 +255,8 @@ fn validate_username(username: &str) -> Result<(), AppError> {
 }
 
 fn validate_password(password: &str) -> Result<(), AppError> {
-    if password.len() < 8 || password.len() > 64 {
-        return Err(AppError::validation(AUTH_005, "密码长度需在 8-64 之间"));
-    }
-    let has_upper = password.chars().any(|c| c.is_uppercase());
-    let has_lower = password.chars().any(|c| c.is_lowercase());
-    let has_digit = password.chars().any(|c| c.is_numeric());
-    if !(has_upper && has_lower && has_digit) {
-        return Err(AppError::validation(AUTH_005, "密码必须包含大小写字母和数字"));
+    if password.len() < 6 || password.len() > 64 {
+        return Err(AppError::validation(AUTH_005, "密码长度需在 6-64 之间"));
     }
     Ok(())
 }

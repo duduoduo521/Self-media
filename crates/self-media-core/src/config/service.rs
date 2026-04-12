@@ -39,62 +39,49 @@ impl ConfigService {
         Self { db }
     }
 
-    /// 设置 API Key（加密存储）
+    /// 设置 API Key（直接存储到 users 表）
     pub async fn set_api_key(
         &self,
         user_id: i64,
-        provider: &str,
+        _provider: &str,
         key: &str,
-        region: &str,
-        user_key: &UserKey,
+        _region: &str,
+        _user_key: &UserKey,
     ) -> Result<(), AppError> {
         if key.trim().is_empty() {
             return Err(AppError::validation(INPUT_001, "API Key 不能为空"));
         }
 
-        let encrypted_key = user_key.encrypt(key)?;
-
         sqlx::query(
-            "INSERT INTO api_keys (user_id, provider, encrypted_key, region) \
-             VALUES (?, ?, ?, ?) \
-             ON CONFLICT(user_id, provider) DO UPDATE SET \
-             encrypted_key = excluded.encrypted_key, \
-             region = excluded.region"
+            "UPDATE users SET minimax_api_key = ? WHERE id = ?"
         )
+        .bind(key)
         .bind(user_id)
-        .bind(provider)
-        .bind(&encrypted_key)
-        .bind(region)
         .execute(&self.db)
         .await?;
 
         Ok(())
     }
 
-    /// 获取解密后的 API Key
+    /// 获取 API Key（从 users 表直接读取，不加密）
     pub async fn get_api_key(
         &self,
         user_id: i64,
-        provider: &str,
-        user_key: &UserKey,
+        _provider: &str,
+        _user_key: &UserKey,
     ) -> Result<(String, MiniMaxRegion), AppError> {
-        let row: Option<(String, String)> = sqlx::query_as(
-            "SELECT encrypted_key, region FROM api_keys WHERE user_id = ? AND provider = ?"
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT minimax_api_key FROM users WHERE id = ? AND minimax_api_key IS NOT NULL AND minimax_api_key != ''"
         )
         .bind(user_id)
-        .bind(provider)
         .fetch_optional(&self.db)
         .await?;
 
-        let (encrypted_key, region_str) = row
-            .ok_or(AppError::config(CONFIG_001, format!("未配置 {} API Key", provider)))?;
+        if let Some((api_key,)) = row {
+            return Ok((api_key, MiniMaxRegion::CN));
+        }
 
-        let decrypted_key = user_key.decrypt(&encrypted_key)?;
-        let region = match region_str.as_str() {
-            "global" => MiniMaxRegion::Global,
-            _ => MiniMaxRegion::CN,
-        };
-        Ok((decrypted_key, region))
+        Err(AppError::config(CONFIG_001, "未配置 MiniMax API Key".to_string()))
     }
 
     /// 获取用户偏好
@@ -173,6 +160,36 @@ impl ConfigService {
             });
         }
         Ok(configs)
+    }
+
+    /// 获取用户单个平台配置
+    pub async fn get_platform_config(&self, user_id: i64, platform: Platform) -> Result<PlatformConfig, AppError> {
+        let platform_str = serde_json::to_string(&platform)?;
+        let platform_name = &platform_str[1..platform_str.len()-1];
+
+        let row: Option<(String, i32, i32, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT platform, enabled, image_count, cookies, extra FROM platform_configs WHERE user_id = ? AND platform = ?"
+        )
+        .bind(user_id)
+        .bind(platform_name)
+        .fetch_optional(&self.db)
+        .await?;
+
+        match row {
+            Some((_, enabled, image_count, cookies, extra)) => {
+                let extra_map: HashMap<String, String> = extra
+                    .and_then(|e| serde_json::from_str(&e).ok())
+                    .unwrap_or_default();
+                Ok(PlatformConfig {
+                    platform,
+                    enabled: enabled != 0,
+                    image_count: image_count as u32,
+                    cookies,
+                    extra: extra_map,
+                })
+            }
+            None => Err(AppError::config("CONFIG_001", "平台配置不存在")),
+        }
     }
 
     /// 设置/更新平台配置

@@ -11,7 +11,23 @@ pub struct User {
     pub phone: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default = "default_text_model")]
+    pub text_model: String,
+    #[serde(default = "default_image_model")]
+    pub image_model: String,
+    #[serde(default = "default_video_model")]
+    pub video_model: String,
+    #[serde(default = "default_speech_model")]
+    pub speech_model: String,
+    #[serde(default = "default_music_model")]
+    pub music_model: String,
 }
+
+fn default_text_model() -> String { "MiniMax-M2.7".to_string() }
+fn default_image_model() -> String { "image-01".to_string() }
+fn default_video_model() -> String { "video-01".to_string() }
+fn default_speech_model() -> String { "speech-02-hd".to_string() }
+fn default_music_model() -> String { "music-01".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Session {
@@ -44,4 +60,13 @@ pub struct UserInfo {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserModelConfig {
+    pub text_model: String,
+    pub image_model: String,
+    pub video_model: String,
+    pub speech_model: String,
+    pub music_model: String,
 }

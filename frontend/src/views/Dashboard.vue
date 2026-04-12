@@ -34,7 +34,7 @@ import type { DataTableColumns } from 'naive-ui'
 import { taskApi, type Task } from '@/api/task'
 
 const tasks = ref<Task[]>([])
-const runningCount = computed(() => tasks.value.filter((t) => t.status === 'Running').length)
+const runningCount = computed(() => tasks.value.filter((t) => t.status === 'running').length)
 
 const columns: DataTableColumns<Task> = [
   { title: '主题', key: 'topic', ellipsis: { tooltip: true } },

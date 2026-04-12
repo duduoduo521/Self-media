@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { NTag, NIcon, NButton } from 'naive-ui'
-import { CheckCircle, AlertCircle, CloseCircle } from '@vicons/ionicons5'
+import { CheckmarkCircle, AlertCircle, CloseCircle } from '@vicons/ionicons5'
 
 interface Props {
   platform: string
@@ -39,7 +39,7 @@ const statusType = computed(() => {
 
 const statusIcon = computed(() => {
   if (props.cookieValid === null) return AlertCircle
-  return props.cookieValid ? CheckCircle : CloseCircle
+  return props.cookieValid ? CheckmarkCircle : CloseCircle
 })
 
 const statusText = computed(() => {

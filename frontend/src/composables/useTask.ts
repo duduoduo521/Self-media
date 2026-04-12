@@ -4,8 +4,9 @@
 
 import { ref, computed } from 'vue'
 import { useTaskStore } from '@/stores/task'
+import type { TaskStatus } from '@/api/task'
 
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type { TaskStatus }
 
 export interface TaskStep {
   name: string

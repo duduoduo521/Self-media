@@ -23,6 +23,7 @@ const router = createRouter({
         { path: 'hotspot', name: 'Hotspot', component: () => import('@/views/Hotspot.vue') },
         { path: 'create', name: 'Create', component: () => import('@/views/Create.vue') },
         { path: 'tasks', name: 'Tasks', component: () => import('@/views/Tasks.vue') },
+        { path: 'drafts', name: 'Drafts', component: () => import('@/views/Drafts.vue') },
         { path: 'platforms', name: 'Platforms', component: () => import('@/views/Platforms.vue') },
         { path: 'settings', name: 'Settings', component: () => import('@/views/Settings.vue') },
       ],

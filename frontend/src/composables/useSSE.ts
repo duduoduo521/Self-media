@@ -30,8 +30,10 @@ export function useSSE() {
     // Tauri 端通过事件监听
     if ('__TAURI_INTERNALS__' in window) {
       try {
+        // @ts-ignore - Tauri API 类型问题
         const { listen } = await import('@tauri-apps/api/event')
-        const unlisten = await listen<string>('text-stream', (event) => {
+        // @ts-ignore
+        const unlisten = await listen<string>('text-stream', (event: any) => {
           try {
             const data = JSON.parse(event.payload)
             handleMessage(data)

@@ -16,6 +16,7 @@ let tauriApi: any = null
 async function getTauriApi() {
   if (!tauriApi) {
     try {
+      // @ts-ignore - Tauri API 只在桌面端可用
       const { invoke } = await import('@tauri-apps/api/tauri')
       tauriApi = { invoke }
     } catch (e) {

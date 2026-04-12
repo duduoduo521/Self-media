@@ -139,6 +139,7 @@ impl HotspotService {
                     url: item["url"].as_str().map(|s| s.to_string()),
                     category: item["category"].as_str().map(|s| s.to_string()),
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }
@@ -164,6 +165,7 @@ impl HotspotService {
                     url: None,
                     category: None,
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }
@@ -203,6 +205,7 @@ impl HotspotService {
                         _ => "普通".to_string(),
                     }),
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }
@@ -240,6 +243,7 @@ impl HotspotService {
                     url: item["url"].as_str().map(|s| s.to_string()),
                     category: item["type"].as_str().map(|s| s.to_string()),
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }
@@ -277,6 +281,7 @@ impl HotspotService {
                     url: item["article_url"].as_str().map(|s| s.to_string()),
                     category: item["tag"].as_str().map(|s| s.to_string()),
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }
@@ -320,6 +325,7 @@ impl HotspotService {
                     url: note_card["share_url"].as_str().map(|s| s.to_string()),
                     category: note_card["type"].as_str().map(|s| s.to_string()),
                     fetched_at: Utc::now(),
+                    event_date: None,
                 });
             }
         }

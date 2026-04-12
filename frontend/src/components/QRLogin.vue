@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { NModal, NSpin, NButton, NResult } from 'naive-ui'
 
 interface Props {
@@ -120,8 +120,6 @@ function refreshQR() {
   fetchQRCode()
 }
 
-// 监听显示状态，自动获取二维码
-import { watch } from 'vue'
 watch(() => props.show, (val) => {
   if (val) {
     fetchQRCode()

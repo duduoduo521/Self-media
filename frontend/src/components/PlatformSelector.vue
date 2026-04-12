@@ -42,7 +42,7 @@ watch(selectedPlatforms, (val) => {
   emit('update:modelValue', val)
 })
 
-function handleChange(value: string[]) {
-  emit('update:modelValue', value)
+function handleChange(value: (string | number)[]) {
+  emit('update:modelValue', value as string[])
 }
 </script>

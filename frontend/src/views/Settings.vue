@@ -12,6 +12,27 @@
       </n-form>
     </n-card>
 
+    <n-card title="模型配置">
+      <n-form :model="modelConfig" label-placement="left" label-width="100">
+        <n-form-item label="文本模型">
+          <n-select v-model:value="modelConfig.text_model" :options="MODEL_OPTIONS.text" style="width: 300px" />
+        </n-form-item>
+        <n-form-item label="图片模型">
+          <n-select v-model:value="modelConfig.image_model" :options="MODEL_OPTIONS.image" style="width: 300px" />
+        </n-form-item>
+        <n-form-item label="视频模型">
+          <n-select v-model:value="modelConfig.video_model" :options="MODEL_OPTIONS.video" style="width: 300px" />
+        </n-form-item>
+        <n-form-item label="配音模型">
+          <n-select v-model:value="modelConfig.speech_model" :options="MODEL_OPTIONS.speech" style="width: 300px" />
+        </n-form-item>
+        <n-form-item label="音乐模型">
+          <n-select v-model:value="modelConfig.music_model" :options="MODEL_OPTIONS.music" style="width: 300px" />
+        </n-form-item>
+        <n-button type="primary" :loading="savingModel" @click="handleSaveModel">保存</n-button>
+      </n-form>
+    </n-card>
+
     <n-card title="偏好设置">
       <n-form :model="prefs" label-placement="left" label-width="100">
         <n-form-item label="默认模式">
@@ -49,7 +70,7 @@ import { ref, reactive, onMounted } from 'vue'
 import type { FormInst } from 'naive-ui'
 import { NCard, NForm, NFormItem, NInput, NSelect, NSpace, NButton, NSwitch, NDynamicTags, NRadio, NRadioGroup, useMessage } from 'naive-ui'
 import { authApi } from '@/api/auth'
-import { configApi, type UserPreferences } from '@/api/config'
+import { configApi, MODEL_OPTIONS, type ModelConfig, type UserPreferences } from '@/api/config'
 import { useUserStore } from '@/stores/user'
 
 const message = useMessage()
@@ -58,11 +79,20 @@ const userStore = useUserStore()
 const apiKeyFormRef = ref<FormInst | null>(null)
 const savingKey = ref(false)
 const savingPrefs = ref(false)
+const savingModel = ref(false)
 const changingPassword = ref(false)
 
 const apiKeyForm = reactive({
   provider: 'minimax',
   key: '',
+})
+
+const modelConfig = reactive<ModelConfig>({
+  text_model: 'MiniMax-M2.7',
+  image_model: 'image-01',
+  video_model: 'video-01',
+  speech_model: 'speech-02-hd',
+  music_model: 'music-01',
 })
 
 const prefs = reactive<UserPreferences>({
@@ -90,6 +120,18 @@ async function handleSaveApiKey() {
     message.error(e.message || '保存失败')
   } finally {
     savingKey.value = false
+  }
+}
+
+async function handleSaveModel() {
+  savingModel.value = true
+  try {
+    await configApi.setModelConfig(modelConfig)
+    message.success('模型配置保存成功')
+  } catch (e: any) {
+    message.error(e.message || '保存失败')
+  } finally {
+    savingModel.value = false
   }
 }
 
@@ -129,6 +171,11 @@ onMounted(async () => {
     if (keyData.key) {
       apiKeyForm.key = keyData.key
     }
+  } catch {}
+
+  try {
+    const { data: modelData } = await configApi.getModelConfig()
+    Object.assign(modelConfig, modelData)
   } catch {}
 })
 </script>

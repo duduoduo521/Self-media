@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
-use reqwest::{Client, Method, StatusCode};
+use reqwest::{Client, Method};
 
 use crate::error::AiError;
 use crate::model::*;
@@ -32,35 +32,85 @@ impl MiniMaxClient {
         let resp = self.authenticated_request(Method::POST, "/v1/text/chatcompletion_v2")
             .json(&req)
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| self.map_api_error(e))?
-            .json::<TextResponse>()
             .await?;
-        Ok(resp)
+
+        let status = resp.status();
+        let body = resp.text().await?;
+
+        tracing::debug!("MiniMax API response status: {}, body: {}", status, body);
+
+        if !status.is_success() {
+            return Err(AiError::Network(format!("API returned status {}: {}", status, body)));
+        }
+
+        let text_resp: TextResponse = serde_json::from_str(&body)
+            .map_err(|e| AiError::Network(format!("Failed to parse response: {} - body: {}", e, body)))?;
+
+        Ok(text_resp)
     }
 
-    /// 流式文本生成（SSE）
+    /// 流式文本生成（SSE）- 暂时禁用
+    #[allow(dead_code)]
     pub async fn generate_text_stream(
         &self,
-        req: TextRequest,
+        _req: TextRequest,
     ) -> Result<futures::stream::BoxStream<'static, Result<TextChunk, AiError>>, AiError> {
-        let mut stream_req = req;
-        stream_req.stream = Some(true);
+        Err(AiError::Network("Streaming not implemented".into()))
+    }
 
-        let resp = self.authenticated_request(Method::POST, "/v1/text/chatcompletion_v2")
-            .json(&stream_req)
+    /// 新的聊天完成 API (支持联网搜索)
+    pub async fn chat_completions<R: serde::Serialize, T: serde::de::DeserializeOwned>(&self, req: &R) -> Result<T, AiError> {
+        let resp = self.authenticated_request(Method::POST, "/v1/chat/completions")
+            .json(req)
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| self.map_api_error(e))?;
+            .await?;
 
-        Ok(parse_sse_stream(resp.bytes_stream()))
+        let status = resp.status();
+        let body = resp.text().await?;
+
+        tracing::debug!("MiniMax chat/completions response status: {}, body: {}", status, body);
+
+        if !status.is_success() {
+            return Err(AiError::Network(format!("API returned status {}: {}", status, body)));
+        }
+
+        let parsed: T = serde_json::from_str(&body)
+            .map_err(|e| AiError::Network(format!("Failed to parse response: {} - body: {}", e, body)))?;
+
+        Ok(parsed)
+    }
+
+    /// 使用新端点的文本生成 (MiniMax-M2.7等新模型)
+    pub async fn generate_text_v2(&self, model: &str, messages: Vec<Message>, temperature: Option<f64>) -> Result<TextResponse, AiError> {
+        let request = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": false,
+            "temperature": temperature
+        });
+
+        let resp: serde_json::Value = self.chat_completions(&request).await?;
+
+        let content = resp["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        Ok(TextResponse {
+            choices: vec![Choice {
+                message: Message {
+                    role: "assistant".to_string(),
+                    content: content.clone(),
+                },
+                finish_reason: None,
+            }],
+            usage: Usage { total_tokens: 0 },
+        })
     }
 
     /// 图片生成
     pub async fn generate_images(&self, req: ImageRequest) -> Result<ImageResponse, AiError> {
-        let resp = self.authenticated_request(Method::POST, "/v1/image/generation")
+        let resp = self.authenticated_request(Method::POST, "/v1/image_generation")
             .json(&req)
             .send()
             .await?
@@ -84,7 +134,7 @@ impl MiniMaxClient {
         Ok(resp)
     }
 
-    /// 查询视频任务状态
+    /// 查询视频生成状态
     pub async fn poll_video_task(&self, task_id: &str) -> Result<VideoTaskStatus, AiError> {
         let resp = self.authenticated_request(
             Method::GET,
@@ -99,40 +149,37 @@ impl MiniMaxClient {
         Ok(resp)
     }
 
-    /// 轮询视频任务直到完成，带超时和指数退避
+    /// 轮询视频任务直到完成
     pub async fn poll_video_until_complete(
         &self,
         task_id: &str,
         max_duration: Duration,
     ) -> Result<String, AiError> {
         let start = Instant::now();
-        let mut interval = Duration::from_secs(5);
-        let max_interval = Duration::from_secs(30);
-
         loop {
             if start.elapsed() > max_duration {
-                return Err(AiError::Timeout("视频生成超时，已自动取消".into()));
+                return Err(AiError::Timeout("Video generation timeout".into()));
             }
 
-            tokio::time::sleep(interval).await;
-
             let status = self.poll_video_task(task_id).await?;
+
             match status.status.as_str() {
-                "Success" => {
-                    return status.file_id.ok_or(AiError::ApiError("视频生成成功但未返回文件 ID".into()));
+                "success" => {
+                    let file_id = status.file_id
+                        .ok_or_else(|| AiError::Network("No file_id in response".into()))?;
+                    return Ok(file_id);
                 }
-                "Failed" => {
-                    let msg = status.error.unwrap_or_default();
-                    return Err(AiError::ApiError(format!("视频生成失败: {}", msg)));
+                "fail" => {
+                    return Err(AiError::Network(format!("Video generation failed: {:?}", status)));
                 }
                 _ => {
-                    interval = (interval * 2).min(max_interval);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                 }
             }
         }
     }
 
-    /// 获取视频文件下载 URL
+    /// 获取视频下载链接
     pub async fn get_video_download_url(&self, file_id: &str) -> Result<String, AiError> {
         let resp = self.authenticated_request(
             Method::GET,
@@ -145,22 +192,23 @@ impl MiniMaxClient {
         .json::<serde_json::Value>()
         .await?;
 
-        resp["file"]["download_url"]
-            .as_str()
+        resp["data"]["download_url"].as_str()
             .map(|s| s.to_string())
-            .ok_or(AiError::Parse("视频下载 URL 获取失败".into()))
+            .ok_or_else(|| AiError::Network("No download_url in response".into()))
     }
 
-    /// 下载视频文件
+    /// 下载视频数据
     pub async fn download_video(&self, file_id: &str) -> Result<Vec<u8>, AiError> {
         let download_url = self.get_video_download_url(file_id).await?;
         let resp = self.http.get(&download_url)
             .send()
             .await?
             .error_for_status()
-            .map_err(|e| self.map_api_error(e))?;
-        let bytes = resp.bytes().await?;
-        Ok(bytes.to_vec())
+            .map_err(|e| self.map_api_error(e))?
+            .bytes()
+            .await?
+            .to_vec();
+        Ok(resp)
     }
 
     /// 语音合成
@@ -186,91 +234,46 @@ impl MiniMaxClient {
             .await?
             .error_for_status()
             .map_err(|e| self.map_api_error(e))?
-            .json::<SpeechResponse>()
-            .await?;
+            .bytes()
+            .await?
+            .to_vec();
 
-        let audio_bytes = hex::decode(&resp.data.hex)
-            .map_err(|e| AiError::Parse(format!("音频解码失败: {}", e)))?;
-        Ok(audio_bytes)
+        Ok(resp)
     }
 
     /// 验证 API Key 是否有效
     pub async fn validate_api_key(&self) -> Result<(), AiError> {
-        let resp = self.http
-            .post(format!("{}/v1/text/chatcompletion_v2", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&serde_json::json!({
-                "model": "MiniMax-Text-01",
-                "messages": [{"role": "user", "content": "hi"}],
-                "tokens_to_generate": 1
-            }))
-            .send()
-            .await
-            .map_err(|e| AiError::Network(e.to_string()))?;
+        let req = TextRequest {
+            model: "MiniMax-Text-01".into(),
+            messages: vec![
+                Message {
+                    role: "user".into(),
+                    content: "hi".into(),
+                }
+            ],
+            temperature: None,
+            stream: Some(false),
+        };
 
-        match resp.status() {
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                Err(AiError::InvalidApiKey("API Key 无效".into()))
-            }
-            _ if resp.status().is_success() => Ok(()),
-            _ => Err(AiError::ApiError(format!("API 返回错误: {}", resp.status()))),
+        let resp = self.authenticated_request(Method::POST, "/v1/text/chatcompletion_v2")
+            .json(&req)
+            .send()
+            .await?;
+
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(AiError::InvalidApiKey(format!("Invalid API key, status: {}", resp.status())))
         }
     }
 
     fn map_api_error(&self, e: reqwest::Error) -> AiError {
-        match e.status() {
-            Some(StatusCode::UNAUTHORIZED) | Some(StatusCode::FORBIDDEN) => {
-                AiError::InvalidApiKey("API Key 无效或权限不足".into())
-            }
-            Some(StatusCode::TOO_MANY_REQUESTS) => {
-                AiError::QuotaExceeded("API 调用配额不足或限流".into())
-            }
-            Some(StatusCode::REQUEST_TIMEOUT) | Some(StatusCode::GATEWAY_TIMEOUT) => {
-                AiError::Timeout("AI 生成超时".into())
-            }
-            _ => AiError::ApiError(format!("AI 服务错误: {}", e)),
+        if e.is_timeout() {
+            AiError::Timeout("Request timeout".into())
+        } else if e.is_connect() {
+            AiError::Network("Connection failed".into())
+        } else {
+            AiError::Network(e.to_string())
         }
     }
-}
-
-/// SSE 流解析器：处理 TCP 分包导致的数据切分
-fn parse_sse_stream(
-    byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
-) -> futures::stream::BoxStream<'static, Result<TextChunk, AiError>> {
-    futures::stream::unfold(
-        (byte_stream.boxed(), String::new()),
-        |(mut byte_stream, mut buffer)| async move {
-            loop {
-                if let Some(pos) = buffer.find("\n\n") {
-                    let block = buffer[..pos].to_string();
-                    buffer.drain(..pos + 2);
-
-                    for line in block.lines() {
-                        if let Some(data) = line.strip_prefix("data: ") {
-                            if data == "[DONE]" {
-                                return None;
-                            }
-                            if let Ok(chunk) = serde_json::from_str::<TextChunk>(data) {
-                                return Some((Ok(chunk), (byte_stream, buffer)));
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                let item = byte_stream.next().await;
-                match item {
-                    Some(Ok(bytes)) => {
-                        buffer.push_str(&String::from_utf8_lossy(&bytes));
-                        continue;
-                    }
-                    Some(Err(e)) => {
-                        return Some((Err(AiError::Network(format!("流读取失败: {}", e))), (byte_stream, buffer)));
-                    }
-                    None => return None,
-                }
-            }
-        },
-    )
-    .boxed()
 }

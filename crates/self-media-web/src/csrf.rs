@@ -8,7 +8,6 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
 
 /// 生成 CSRF Token
-#[allow(dead_code)]
 pub fn generate_csrf_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill(&mut bytes);

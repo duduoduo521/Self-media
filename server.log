@@ -1,0 +1,4 @@
+[2m2026-04-12T15:30:24.827736Z[0m [32m INFO[0m [2mself_media_web[0m[2m:[0m 数据库连接成功: ./data/self-media.db
+[2m2026-04-12T15:30:24.827889Z[0m [32m INFO[0m [2mself_media_web[0m[2m:[0m 新系统密钥已生成
+[2m2026-04-12T15:30:24.827924Z[0m [33m WARN[0m [2mself_media_web[0m[2m:[0m 系统密钥持久化失败: 加密失败: 机器密钥长度错误: Invalid Length
+[2m2026-04-12T15:30:24.835088Z[0m [32m INFO[0m [2mself_media_web[0m[2m:[0m Web 服务启动: http://0.0.0.0:3000

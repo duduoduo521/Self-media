@@ -8,9 +8,9 @@ export interface LoginRequest {
 export interface RegisterRequest {
   username: string
   password: string
-  confirmPassword: string
-  email: string
-  minimaxApiKey: string
+  confirmPassword?: string
+  email?: string
+  minimaxApiKey?: string
   phone?: string
 }
 

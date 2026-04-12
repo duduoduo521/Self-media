@@ -34,6 +34,7 @@ impl TaskScheduler {
         mode: TaskMode,
         topic: String,
         platforms: Vec<Platform>,
+        event_date: Option<chrono::NaiveDate>,
     ) -> Result<Task, AppError> {
         let active = self.active_count.load(Ordering::Relaxed);
         if active >= self.concurrent_limit {
@@ -48,9 +49,6 @@ impl TaskScheduler {
         if topic.len() > 500 {
             return Err(AppError::validation(INPUT_001, "主题长度不能超过 500 字"));
         }
-        if platforms.is_empty() {
-            return Err(AppError::validation(INPUT_001, "请至少选择一个发布平台"));
-        }
 
         let task_id = Uuid::new_v4().to_string();
         let steps = match mode {
@@ -59,12 +57,14 @@ impl TaskScheduler {
         };
         let total_steps = steps.len();
 
-        let mode_str = serde_json::to_string(&mode)?;
+        let mode_str = mode.to_string();
         let platforms_str = serde_json::to_string(&platforms)?;
 
+        let event_date_str = event_date.map(|d| d.format("%Y-%m-%d").to_string());
+
         let task: Task = sqlx::query_as(
-            "INSERT INTO tasks (id, user_id, task_type, status, mode, topic, platforms, total_steps) \
-             VALUES (?, ?, 'generate_publish', 'Pending', ?, ?, ?, ?) RETURNING *"
+            "INSERT INTO tasks (id, user_id, task_type, status, mode, topic, platforms, total_steps, event_date) \
+             VALUES (?, ?, 'generate_publish', 'Pending', ?, ?, ?, ?, ?) RETURNING *"
         )
         .bind(&task_id)
         .bind(user_id)
@@ -72,6 +72,7 @@ impl TaskScheduler {
         .bind(&topic)
         .bind(&platforms_str)
         .bind(total_steps as i64)
+        .bind(&event_date_str)
         .fetch_one(&self.db)
         .await?;
 

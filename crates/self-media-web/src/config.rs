@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/platforms", get(get_platforms))
         .route("/platforms/{platform}", put(set_platform))
         .route("/preferences", get(get_preferences).put(set_preferences))
+        .route("/models", get(get_model_config).put(set_model_config))
 }
 
 #[derive(serde::Serialize)]
@@ -26,7 +27,7 @@ pub struct ApiKeyResponse {
     pub region: String,
 }
 
-async fn get_api_key(
+pub async fn get_api_key(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<ApiOk<ApiKeyResponse>, WebError> {
@@ -52,7 +53,7 @@ pub struct SetApiKeyRequest {
     pub region: String,
 }
 
-async fn set_api_key(
+pub async fn set_api_key(
     auth: AuthUser,
     State(state): State<AppState>,
     Json(body): Json<SetApiKeyRequest>,
@@ -73,7 +74,7 @@ pub struct PlatformListResponse {
     pub platforms: Vec<PlatformConfig>,
 }
 
-async fn get_platforms(
+pub async fn get_platforms(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<ApiOk<PlatformListResponse>, WebError> {
@@ -89,7 +90,7 @@ pub struct SetPlatformRequest {
     pub extra: Option<std::collections::HashMap<String, String>>,
 }
 
-async fn set_platform(
+pub async fn set_platform(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(platform): Path<String>,
@@ -123,7 +124,7 @@ pub struct PreferencesResponse {
     pub preferences: UserPreferences,
 }
 
-async fn get_preferences(
+pub async fn get_preferences(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<ApiOk<PreferencesResponse>, WebError> {
@@ -138,7 +139,7 @@ pub struct SetPreferencesRequest {
     pub auto_publish: Option<bool>,
 }
 
-async fn set_preferences(
+pub async fn set_preferences(
     auth: AuthUser,
     State(state): State<AppState>,
     Json(body): Json<SetPreferencesRequest>,
@@ -154,5 +155,53 @@ async fn set_preferences(
         .config_service
         .set_preferences(auth.user_id, &updated)
         .await?;
+    Ok(ApiOk(()))
+}
+
+#[derive(serde::Serialize)]
+pub struct ModelConfigResponse {
+    pub text_model: String,
+    pub image_model: String,
+    pub video_model: String,
+    pub speech_model: String,
+    pub music_model: String,
+}
+
+pub async fn get_model_config(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<ApiOk<ModelConfigResponse>, WebError> {
+    let config = state.user_service.get_user_model_config(auth.user_id).await?;
+    Ok(ApiOk(ModelConfigResponse {
+        text_model: config.text_model,
+        image_model: config.image_model,
+        video_model: config.video_model,
+        speech_model: config.speech_model,
+        music_model: config.music_model,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct SetModelConfigRequest {
+    pub text_model: String,
+    pub image_model: String,
+    pub video_model: String,
+    pub speech_model: String,
+    pub music_model: String,
+}
+
+pub async fn set_model_config(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<SetModelConfigRequest>,
+) -> Result<ApiOk<()>, WebError> {
+    let config = self_media_core::user::model::UserModelConfig {
+        text_model: body.text_model,
+        image_model: body.image_model,
+        video_model: body.video_model,
+        speech_model: body.speech_model,
+        music_model: body.music_model,
+    };
+    state.user_service.update_user_model_config(auth.user_id, &config).await?;
     Ok(ApiOk(()))
 }

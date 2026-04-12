@@ -1,7 +1,7 @@
 <template>
   <n-space vertical :size="16">
     <n-grid :cols="3" :x-gap="16" :y-gap="16">
-      <n-gi v-for="p in platforms" :key="p.platform">
+      <n-gi v-for="p in displayPlatforms" :key="p.platform">
         <n-card>
           <template #header>
             <n-space align="center" justify="space-between">
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { NSpace, NGrid, NGi, NCard, NAvatar, NTag, NText, NSwitch, NButton, NModal, NQrCode, NProgress, useMessage } from 'naive-ui'
 import { platformApi, type PlatformConfig } from '@/api/platform'
 
@@ -90,6 +90,15 @@ const qrLoading = ref(false)
 const qrProgress = ref(0)
 const qrStatus = ref('')
 let pollTimer: number | null = null
+
+const ALL_PLATFORMS: PlatformConfig[] = [
+  { platform: 'weibo', name: '微博', enabled: false, status: 'disconnected' },
+  { platform: 'bilibili', name: 'B站', enabled: false, status: 'disconnected' },
+  { platform: 'douyin', name: '抖音', enabled: false, status: 'disconnected' },
+  { platform: 'xiaohongshu', name: '小红书', enabled: false, status: 'disconnected' },
+  { platform: 'toutiao', name: '头条', enabled: false, status: 'disconnected' },
+  { platform: 'wechatofficial', name: '公众号', enabled: false, status: 'disconnected' },
+]
 
 const platformIcons: Record<string, string> = {
   weibo: '📧',
@@ -129,6 +138,15 @@ function formatTime(time: string) {
     return time
   }
 }
+
+const displayPlatforms = computed(() => {
+  const configuredPlatforms = new Map(platforms.value.map(p => [p.platform, p]))
+  return ALL_PLATFORMS.map(p => ({
+    ...p,
+    ...configuredPlatforms.get(p.platform),
+    name: p.name,
+  }))
+})
 
 async function loadPlatforms() {
   try {

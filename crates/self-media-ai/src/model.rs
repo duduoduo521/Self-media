@@ -66,12 +66,12 @@ pub struct ImageRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImageResponse {
-    pub data: Vec<ImageData>,
+    pub data: ImageResultData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ImageData {
-    pub url: String,
+pub struct ImageResultData {
+    pub image_urls: Vec<String>,
 }
 
 // ---- 视频生成 ----

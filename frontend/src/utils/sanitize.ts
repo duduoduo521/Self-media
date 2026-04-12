@@ -57,10 +57,7 @@ export function sanitizeUrl(url: string): string {
  * 过滤敏感词和不当内容
  */
 export function filterKeywords(text: string): string {
-  // 敏感词列表（可扩展）
-  const sensitiveWords = [
-    // 在这里添加敏感词
-  ]
+  const sensitiveWords: string[] = []
 
   let filtered = text
   for (const word of sensitiveWords) {

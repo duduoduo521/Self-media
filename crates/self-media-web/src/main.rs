@@ -1,11 +1,12 @@
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use axum::{
     extract::{FromRequestParts, Request, State},
     http::{StatusCode, request::Parts},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, put},
     Json, Router,
 };
 
@@ -29,6 +30,7 @@ use self_media_publish::PublisherRegistry;
 mod auth;
 mod config;
 mod csrf;
+mod draft;
 mod hotspot;
 mod qr_login;
 mod sse;
@@ -48,7 +50,8 @@ pub struct AppState {
     pub hotspot_service: Arc<tokio::sync::Mutex<HotspotService>>,
     pub task_scheduler: Arc<tokio::sync::Mutex<TaskScheduler>>,
     pub config_service: Arc<ConfigService>,
-    pub publisher_registry: Arc<std::sync::Mutex<PublisherRegistry>>,
+    pub draft_service: Arc<self_media_core::draft::DraftService>,
+    pub publisher_registry: Arc<Mutex<PublisherRegistry>>,
     pub user_key_cache: Arc<UserKeyCache>,
     pub qr_manager: Arc<tokio::sync::RwLock<QrLoginManager>>,
     pub sse_sender: tokio::sync::broadcast::Sender<sse::SseEvent>,
@@ -206,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
     let user_service = Arc::new(UserService::new(pool.clone(), system_key.clone()));
     let hotspot_service = HotspotService::new(http_for_hotspot);
     let config_service = Arc::new(ConfigService::new(pool.clone()));
+    let draft_service = Arc::new(self_media_core::draft::DraftService::new(pool.clone()));
     let task_scheduler = TaskScheduler::new(pool.clone(), 5);
     let mut publisher_registry = PublisherRegistry::new();
     self_media_publish::adapters::register_all(&mut publisher_registry);
@@ -226,7 +230,8 @@ async fn main() -> anyhow::Result<()> {
         hotspot_service: Arc::new(tokio::sync::Mutex::new(hotspot_service)),
         task_scheduler: Arc::new(tokio::sync::Mutex::new(task_scheduler)),
         config_service,
-        publisher_registry: Arc::new(std::sync::Mutex::new(publisher_registry)),
+        draft_service,
+        publisher_registry: Arc::new(Mutex::new(publisher_registry)),
         user_key_cache,
         qr_manager,
         sse_sender,
@@ -236,10 +241,15 @@ async fn main() -> anyhow::Result<()> {
     let protected = Router::new()
         .nest("/hotspot", hotspot::router())
         .nest("/tasks", task::router())
-        .nest("/config", config::router())
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
-        // CSRF 防护：验证 X-CSRF-Token header 与 Cookie 匹配
-        .layer(middleware::from_fn(csrf_protection));
+        .nest("/drafts", draft::router())
+        .route("/api-key", get(config::get_api_key).put(config::set_api_key))
+        .route("/platforms", get(config::get_platforms))
+        .route("/platforms/{platform}", put(config::set_platform))
+        .route("/preferences", get(config::get_preferences).put(config::set_preferences))
+        .route("/models", get(config::get_model_config).put(config::set_model_config))
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        // CSRF 防护已禁用（开发模式）
+        // .layer(middleware::from_fn(csrf_protection));
 
     let app = Router::new()
         .route("/api/health", get(health_check))

@@ -1,16 +1,18 @@
 import http from './http'
 
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
 export interface Task {
   id: string
   user_id: number
   task_type: string
-  status: string
+  status: TaskStatus
   mode: string
   topic: string
   platforms: string
   progress: number
   total_steps: number
-  current_step: string | null
+  current_step: number
   result: string | null
   error: string | null
   retry_count: number
@@ -34,9 +36,15 @@ export const taskApi = {
   execute(id: string) {
     return http.post(`/tasks/${id}/execute`)
   },
+  generate(id: string) {
+    return http.post(`/tasks/${id}/generate`)
+  },
+  saveToDraft(id: string) {
+    return http.post(`/tasks/${id}/save-to-draft`)
+  },
 }
 
-export async function createTask(data: { mode: string; topic: string; platforms: string[]; config?: Record<string, any> }) {
+export async function createTask(data: { mode: string; topic: string; platforms: string[]; event_date?: string; config?: Record<string, any> }) {
   const response = await http.post<{ task: Task }>('/tasks', data)
-  return response.task
+  return response.data.task
 }

@@ -41,8 +41,12 @@
       </n-form-item>
 
       <n-space vertical :size="16">
-        <n-button type="primary" size="large" block @click="handleGenerate" :loading="generating">
-          {{ generating ? '生成中...' : '一键生成并发布' }}
+        <n-button type="primary" size="large" block @click="handleGenerateAndPublish" :loading="generating">
+          {{ generating ? '生成并发布中...' : '一键生成并发布' }}
+        </n-button>
+
+        <n-button size="large" block @click="handleGenerateToDraft" :loading="generating">
+          {{ generating ? '生成中...' : '保存到草稿箱' }}
         </n-button>
 
         <TaskProgress v-if="currentTaskId" :task-id="currentTaskId" @complete="handleComplete" />
@@ -52,13 +56,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { NCard, NTabs, NTabPane, NForm, NFormItem, NInput, NInputNumber, NButton, NSpace, NDivider, useMessage } from 'naive-ui'
+import { ref, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { NCard, NTabs, NTabPane, NForm, NFormItem, NInput, NInputNumber, NButton, NSpace, NDivider, useMessage, useDialog } from 'naive-ui'
 import PlatformSelector from '@/components/PlatformSelector.vue'
 import TaskProgress from '@/components/TaskProgress.vue'
-import { createTask } from '@/api/task'
+import { createTask, taskApi } from '@/api/task'
 
+const route = useRoute()
 const message = useMessage()
+const dialog = useDialog()
 const mode = ref<'text' | 'video'>('text')
 const generating = ref(false)
 const currentTaskId = ref<string | null>(null)
@@ -75,7 +82,21 @@ const videoForm = reactive({
 
 const selectedPlatforms = ref<string[]>([])
 
-async function handleGenerate() {
+onMounted(() => {
+  const topic = route.query.topic as string
+  const dateStr = route.query.date as string
+  if (topic) {
+    textForm.topic = topic
+    videoForm.topic = topic
+  }
+  if (dateStr) {
+    eventDate.value = dateStr
+  }
+})
+
+const eventDate = ref<string | undefined>(undefined)
+
+async function handleGenerateAndPublish() {
   if (!textForm.topic && !videoForm.topic) {
     message.warning('请输入创作主题')
     return
@@ -92,22 +113,60 @@ async function handleGenerate() {
       mode: mode.value,
       topic,
       platforms: selectedPlatforms.value,
-      config: mode.value === 'text' 
+      event_date: eventDate.value,
+      config: mode.value === 'text'
         ? { image_count: textForm.imageCount }
         : { duration: videoForm.duration },
     })
     currentTaskId.value = task.id
-    message.success('任务已创建')
+    message.success('任务已创建，正在执行...')
   } catch (error) {
     message.error('创建任务失败')
+    generating.value = false
+  }
+}
+
+async function handleGenerateToDraft() {
+  if (!textForm.topic && !videoForm.topic) {
+    message.warning('请输入创作主题')
+    return
+  }
+
+  generating.value = true
+  try {
+    const topic = mode.value === 'text' ? textForm.topic : videoForm.topic
+    const task = await createTask({
+      mode: mode.value,
+      topic,
+      platforms: selectedPlatforms.value.length > 0 ? selectedPlatforms.value : [],
+      event_date: eventDate.value,
+      config: mode.value === 'text'
+        ? { image_count: textForm.imageCount }
+        : { duration: videoForm.duration },
+    })
+    message.success('任务已创建，请在任务列表中查看进度')
+    currentTaskId.value = task.id
+    setTimeout(() => {
+      window.location.hash = '#/tasks'
+    }, 1500)
+  } catch (error: any) {
+    message.error(error?.message || '创建任务失败')
   } finally {
     generating.value = false
   }
 }
 
 function handleComplete(result: any) {
-  message.success('发布完成')
+  if (result.warning) {
+    dialog.warning({
+      title: '提示',
+      content: result.warning,
+    })
+  } else {
+    message.success('发布完成')
+  }
   currentTaskId.value = null
+  generating.value = false
 }
 </script>
 

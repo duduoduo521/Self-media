@@ -34,6 +34,7 @@ import {
   SettingsOutline,
   GridOutline,
   CreateOutline,
+  DocumentTextOutline,
 } from '@vicons/ionicons5'
 import { useUserStore } from '@/stores/user'
 
@@ -47,6 +48,7 @@ const menuOptions: MenuOption[] = [
   { label: '热点发现', key: 'Hotspot', icon: () => h(FlameOutline) },
   { label: '创作中心', key: 'Create', icon: () => h(CreateOutline) },
   { label: '任务管理', key: 'Tasks', icon: () => h(ListOutline) },
+  { label: '草稿箱', key: 'Drafts', icon: () => h(DocumentTextOutline) },
   { label: '平台管理', key: 'Platforms', icon: () => h(GridOutline) },
   { label: '系统设置', key: 'Settings', icon: () => h(SettingsOutline) },
 ]

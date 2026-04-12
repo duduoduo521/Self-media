@@ -43,6 +43,15 @@ pub enum TaskMode {
     Video,
 }
 
+impl std::fmt::Display for TaskMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskMode::Text => write!(f, "text"),
+            TaskMode::Video => write!(f, "video"),
+        }
+    }
+}
+
 /// MiniMax 区域
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MiniMaxRegion {
@@ -53,8 +62,8 @@ pub enum MiniMaxRegion {
 impl MiniMaxRegion {
     pub fn base_url(&self) -> &'static str {
         match self {
-            Self::CN => "https://api.minimaxi.com",
-            Self::Global => "https://api.minimax.io",
+            Self::CN => "https://api.minimax.chat",
+            Self::Global => "https://api.minimaxi.chat",
         }
     }
 }
@@ -131,4 +140,6 @@ pub struct Hotspot {
     pub url: Option<String>,
     pub category: Option<String>,
     pub fetched_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    pub event_date: Option<chrono::NaiveDate>,
 }

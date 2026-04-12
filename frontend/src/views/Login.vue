@@ -6,7 +6,7 @@
           <n-input v-model:value="form.username" placeholder="3-32 位字母数字下划线" />
         </n-form-item>
         <n-form-item label="密码" path="password">
-          <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="8-64 位，含大小写和数字" />
+          <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="输入密码" />
         </n-form-item>
         <n-space vertical>
           <n-button type="primary" block :loading="loading" @click="handleLogin">登录</n-button>

@@ -13,6 +13,8 @@ pub mod douyin_qr;
 pub mod xiaohongshu_qr;
 pub mod wechat_qr;
 
+use std::sync::Arc;
+
 use reqwest::Client;
 
 use crate::registry::PublisherRegistry;
@@ -25,12 +27,12 @@ pub fn register_all(registry: &mut PublisherRegistry) {
         .build()
         .expect("HTTP client build failed");
 
-    registry.register(Box::new(weibo::WeiboPublisher::new(http.clone())));
-    registry.register(Box::new(toutiao::ToutiaoPublisher::new(http.clone())));
-    registry.register(Box::new(wechat::WeChatPublisher::new(http.clone())));
-    registry.register(Box::new(bilibili::BilibiliPublisher::new(http.clone())));
-    registry.register(Box::new(xiaohongshu::XiaohongshuPublisher::new(http.clone())));
-    registry.register(Box::new(douyin::DouyinPublisher::new(http)));
+    registry.register(Arc::new(weibo::WeiboPublisher::new(http.clone())));
+    registry.register(Arc::new(toutiao::ToutiaoPublisher::new(http.clone())));
+    registry.register(Arc::new(wechat::WeChatPublisher::new(http.clone())));
+    registry.register(Arc::new(bilibili::BilibiliPublisher::new(http.clone())));
+    registry.register(Arc::new(xiaohongshu::XiaohongshuPublisher::new(http.clone())));
+    registry.register(Arc::new(douyin::DouyinPublisher::new(http)));
 }
 
 /// 注册扫码登录处理器

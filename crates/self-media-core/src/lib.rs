@@ -4,6 +4,7 @@ pub mod user;
 pub mod hotspot;
 pub mod task;
 pub mod config;
+pub mod draft;
 
 #[cfg(test)]
 mod test;

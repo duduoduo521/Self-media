@@ -27,7 +27,7 @@ export const useTaskStore = defineStore('task', () => {
     await taskApi.cancel(id)
     const task = tasks.value.find(t => t.id === id)
     if (task) {
-      task.status = 'cancelled'
+      task.status = 'failed'
     }
   }
 

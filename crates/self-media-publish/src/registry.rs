@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use self_media_core::types::Platform;
 
@@ -6,7 +7,7 @@ use crate::publisher::PlatformPublisher;
 
 /// 平台适配器注册表
 pub struct PublisherRegistry {
-    publishers: HashMap<Platform, Box<dyn PlatformPublisher>>,
+    publishers: HashMap<Platform, Arc<dyn PlatformPublisher>>,
 }
 
 impl Default for PublisherRegistry {
@@ -23,14 +24,14 @@ impl PublisherRegistry {
     }
 
     /// 注册平台适配器
-    pub fn register(&mut self, publisher: Box<dyn PlatformPublisher>) {
+    pub fn register(&mut self, publisher: Arc<dyn PlatformPublisher>) {
         let platform = publisher.platform();
         self.publishers.insert(platform, publisher);
     }
 
     /// 获取平台适配器
-    pub fn get(&self, platform: &Platform) -> Option<&dyn PlatformPublisher> {
-        self.publishers.get(platform).map(|p| p.as_ref())
+    pub fn get(&self, platform: &Platform) -> Option<Arc<dyn PlatformPublisher>> {
+        self.publishers.get(platform).cloned()
     }
 
     /// 获取所有已注册平台

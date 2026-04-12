@@ -11,7 +11,7 @@
             v-model:value="form.password"
             type="password"
             show-password-on="click"
-            placeholder="8-64 位，含大小写和数字"
+            placeholder="6-64 位"
           />
         </n-form-item>
 
@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NText, useMessage, FormInst, FormRules } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NText, useMessage, type FormInst, type FormRules } from 'naive-ui'
 import { authApi } from '@/api/auth'
 
 const router = useRouter()
@@ -109,17 +109,8 @@ const rules: FormRules = {
     { required: true, message: '请输入密码', trigger: 'blur' },
     {
       validator: (_rule, value: string) => {
-        if (value.length < 8 || value.length > 64) {
-          return new Error('密码长度需在 8-64 之间')
-        }
-        if (!/[A-Z]/.test(value)) {
-          return new Error('密码必须包含大写字母')
-        }
-        if (!/[a-z]/.test(value)) {
-          return new Error('密码必须包含小写字母')
-        }
-        if (!/[0-9]/.test(value)) {
-          return new Error('密码必须包含数字')
+        if (value.length < 6 || value.length > 64) {
+          return new Error('密码长度需在 6-64 之间')
         }
         return true
       },
@@ -181,7 +172,7 @@ const rules: FormRules = {
 const isFormValid = computed(() => {
   return (
     form.username.length >= 3 &&
-    form.password.length >= 8 &&
+    form.password.length >= 6 &&
     form.password === form.confirmPassword &&
     /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(form.email) &&
     form.minimaxApiKey.startsWith('sk-') &&
