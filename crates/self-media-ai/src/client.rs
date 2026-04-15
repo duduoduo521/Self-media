@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use futures::StreamExt;
 use reqwest::{Client, Method};
 
 use crate::error::AiError;

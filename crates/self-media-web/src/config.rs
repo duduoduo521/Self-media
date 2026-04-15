@@ -1,7 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, put},
-    Json, Router,
+    Json,
 };
 use serde::Deserialize;
 
@@ -10,15 +9,6 @@ use self_media_core::error::{AppError, *};
 use self_media_core::types::Platform;
 
 use crate::{ApiOk, AppState, AuthUser, WebError};
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api-key", get(get_api_key).put(set_api_key))
-        .route("/platforms", get(get_platforms))
-        .route("/platforms/{platform}", put(set_platform))
-        .route("/preferences", get(get_preferences).put(set_preferences))
-        .route("/models", get(get_model_config).put(set_model_config))
-}
 
 #[derive(serde::Serialize)]
 pub struct ApiKeyResponse {

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use base64::Engine;
 use lru::LruCache;
 use self_media_crypto::{UserKey, SystemKey};
 use sqlx::SqlitePool;
@@ -229,18 +230,20 @@ impl ConfigService {
 
 pub struct UserKeyCache {
     cache: RwLock<LruCache<i64, Arc<UserKey>>>,
+    system_key: SystemKey,
 }
 
 impl UserKeyCache {
-    pub fn new(max_capacity: usize) -> Self {
+    pub fn new(max_capacity: usize, system_key: SystemKey) -> Self {
         Self {
             cache: RwLock::new(LruCache::new(
                 NonZeroUsize::new(max_capacity).unwrap_or(NonZeroUsize::new(100).unwrap()),
             )),
+            system_key,
         }
     }
 
-    /// 获取用户密钥，若缓存未命中则从数据库加载并派生
+    /// 获取用户密钥，若缓存未命中则从数据库加载加密密钥并解密
     pub async fn get_or_derive(
         &self,
         user_id: i64,
@@ -254,6 +257,38 @@ impl UserKeyCache {
             }
         }
 
+        // 尝试从数据库加载加密的用户密钥
+        let encrypted_user_key: Option<String> = sqlx::query_scalar(
+            "SELECT encrypted_user_key FROM users WHERE id = ?"
+        )
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?;
+
+        if let Some(encrypted) = encrypted_user_key {
+            if !encrypted.is_empty() {
+                // 使用系统密钥解密用户密钥（得到 base64 编码的密钥）
+                let user_key_b64 = self.system_key.decrypt(&encrypted)?;
+                // base64 解码得到原始 32 字节密钥
+                let user_key_bytes = base64::engine::general_purpose::STANDARD
+                    .decode(&user_key_b64)
+                    .map_err(|e| AppError::crypto(CRYPTO_001, format!("用户密钥解码失败: {}", e)))?;
+                if user_key_bytes.len() == 32 {
+                    let mut key_bytes = [0u8; 32];
+                    key_bytes.copy_from_slice(&user_key_bytes);
+                    let user_key = Arc::new(UserKey::from_bytes(key_bytes));
+                    
+                    {
+                        let mut cache = self.cache.write().await;
+                        cache.put(user_id, user_key.clone());
+                    }
+                    
+                    return Ok(user_key);
+                }
+            }
+        }
+
+        // 如果数据库中没有加密的用户密钥，需要用户提供密码重新派生
         let password = password
             .ok_or(AppError::crypto(CRYPTO_001, "用户密钥未缓存，需重新登录"))?;
 
@@ -265,6 +300,18 @@ impl UserKeyCache {
         .await?;
 
         let user_key = Arc::new(UserKey::derive_from_password(password, &salt)?);
+
+        // 将用户密钥加密后存储到数据库，以便下次恢复
+        let user_key_bytes = user_key.to_bytes();
+        let user_key_b64 = base64::engine::general_purpose::STANDARD.encode(&user_key_bytes);
+        let encrypted = self.system_key.encrypt(&user_key_b64)?;
+        sqlx::query(
+            "UPDATE users SET encrypted_user_key = ? WHERE id = ?"
+        )
+        .bind(&encrypted)
+        .bind(user_id)
+        .execute(db)
+        .await?;
 
         {
             let mut cache = self.cache.write().await;
@@ -281,8 +328,21 @@ impl UserKeyCache {
     }
 
     /// 插入用户密钥到缓存（登录时调用）
-    pub async fn insert(&self, user_id: i64, user_key: UserKey) {
+    pub async fn insert(&self, user_id: i64, user_key: UserKey, db: &SqlitePool) -> Result<(), AppError> {
+        // 将用户密钥加密后存储到数据库
+        let user_key_bytes = user_key.to_bytes();
+        let user_key_b64 = base64::engine::general_purpose::STANDARD.encode(&user_key_bytes);
+        let encrypted = self.system_key.encrypt(&user_key_b64)?;
+        sqlx::query(
+            "UPDATE users SET encrypted_user_key = ? WHERE id = ?"
+        )
+        .bind(&encrypted)
+        .bind(user_id)
+        .execute(db)
+        .await?;
+
         let mut cache = self.cache.write().await;
         cache.put(user_id, Arc::new(user_key));
+        Ok(())
     }
 }

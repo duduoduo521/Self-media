@@ -157,7 +157,7 @@ async fn login(
 ) -> Result<LoginResponse, WebError> {
     let (session, user_key) = state.user_service.login(&body.username, &body.password).await?;
     // 缓存用户密钥，供后续 API Key 加密使用
-    state.user_key_cache.insert(session.user_id, user_key).await;
+    state.user_key_cache.insert(session.user_id, user_key, &state.db).await?;
     let token = session.token.clone();
     Ok(LoginResponse {
         session,

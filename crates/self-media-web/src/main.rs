@@ -232,7 +232,7 @@ async fn main() -> anyhow::Result<()> {
     let task_scheduler = TaskScheduler::new(pool.clone(), 5);
     let mut publisher_registry = PublisherRegistry::new();
     self_media_publish::adapters::register_all(&mut publisher_registry);
-    let user_key_cache = Arc::new(UserKeyCache::new(100));
+    let user_key_cache = Arc::new(UserKeyCache::new(100, system_key.clone()));
 
     // 初始化扫码登录管理器并注册处理器
     let mut qr_manager = QrLoginManager::new(http_for_qr);
@@ -261,7 +261,9 @@ async fn main() -> anyhow::Result<()> {
         .nest("/hotspot", hotspot::router())
         .nest("/tasks", task::router())
         .nest("/drafts", draft::router())
-        .nest("/upload", upload::router())  // 文件上传路由（需要认证）
+        .nest("/upload", upload::router())
+        .merge(sse::router())  // SSE 路由（需要认证，用户隔离）
+        .merge(qr_login::qr_routes())  // 扫码登录路由（需要认证）
         .route("/api-key", get(config::get_api_key).put(config::set_api_key))
         .route("/platforms", get(config::get_platforms))
         .route("/platforms/{platform}", put(config::set_platform))
@@ -269,7 +271,6 @@ async fn main() -> anyhow::Result<()> {
         .route("/models", get(config::get_model_config).put(config::set_model_config))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
     
-    // CSRF 防护（可通过环境变量控制）
     let protected = if csrf_enabled {
         tracing::info!("CSRF 保护已启用");
         protected.layer(middleware::from_fn(csrf_protection))
@@ -280,8 +281,6 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/health", get(health_check))
-        .merge(qr_login::qr_routes())
-        .merge(sse::router())
         .nest("/api/auth", auth::router())
         .nest("/api", protected)
         .layer(CorsLayer::new()

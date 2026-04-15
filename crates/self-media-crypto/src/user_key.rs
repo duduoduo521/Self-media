@@ -1,8 +1,8 @@
 use aes_gcm::aead::Aead;
 use aes_gcm::{AeadCore, Aes256Gcm, KeyInit, Nonce};
+use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::rngs::OsRng;
-use sha2::{Sha256, Digest};
 
 use crate::CryptoError;
 
@@ -14,9 +14,23 @@ pub struct UserKey {
 impl UserKey {
     pub fn derive_from_password(password: &str, salt_b64: &str) -> Result<Self, CryptoError> {
         let salt = BASE64.decode(salt_b64)?;
+        if salt.len() < 8 {
+            return Err(CryptoError::Format("盐值长度不足，至少需要8字节".into()));
+        }
+
+        let params = Params::new(
+            65536,
+            3,
+            4,
+            Some(32)
+        ).map_err(|e| CryptoError::Format(format!("Argon2参数错误: {}", e)))?;
+
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
         let mut key = [0u8; 32];
-        pbkdf2_simple(password.as_bytes(), &salt, &mut key);
+        argon2
+            .hash_password_into(password.as_bytes(), &salt, &mut key)
+            .map_err(|e| CryptoError::Format(format!("密钥派生失败: {}", e)))?;
 
         Ok(Self { key })
     }
@@ -46,22 +60,12 @@ impl UserKey {
         String::from_utf8(plaintext)
             .map_err(|e| CryptoError::Format(format!("解密后数据不是有效字符串: {}", e)))
     }
-}
 
-fn pbkdf2_simple(password: &[u8], salt: &[u8], output: &mut [u8]) {
-    let mut hasher = Sha256::new();
-    hasher.update(password);
-    hasher.update(salt);
-    let mut result = hasher.finalize();
-    output[..32].copy_from_slice(&result);
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.key
+    }
 
-    for i in 1..1000 {
-        hasher = Sha256::new();
-        hasher.update(&result);
-        hasher.update(&(i as u32).to_le_bytes());
-        result = hasher.finalize();
-        for (j, byte) in result.iter().enumerate() {
-            output[j] ^= byte;
-        }
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self { key: bytes }
     }
 }
