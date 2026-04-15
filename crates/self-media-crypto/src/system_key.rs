@@ -91,6 +91,35 @@ impl SystemKey {
             .ok_or(CryptoError::Jwt("无效的 JWT: 缺少 sub 字段".into()))?;
         Ok(user_id)
     }
+
+    /// 加密敏感数据（如 API Key）
+    /// 使用 AES-256-GCM 加密，返回 Base64 编码的密文
+    pub fn encrypt(&self, plaintext: &str) -> Result<String, CryptoError> {
+        let cipher = Aes256Gcm::new_from_slice(&self.key_bytes)
+            .map_err(|e| CryptoError::Encrypt(format!("加密失败: {}", e)))?;
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes())?;
+        let mut combined = nonce.to_vec();
+        combined.extend_from_slice(&ciphertext);
+        Ok(BASE64.encode(&combined))
+    }
+
+    /// 解密敏感数据（如 API Key）
+    /// 使用 AES-256-GCM 解密 Base64 编码的密文
+    pub fn decrypt(&self, encrypted: &str) -> Result<String, CryptoError> {
+        let combined = BASE64.decode(encrypted)?;
+        if combined.len() < 12 {
+            return Err(CryptoError::Format("密文格式错误".into()));
+        }
+        let nonce = Nonce::from_slice(&combined[..12]);
+        let ciphertext = &combined[12..];
+        let cipher = Aes256Gcm::new_from_slice(&self.key_bytes)
+            .map_err(|e| CryptoError::Decrypt(format!("解密失败: {}", e)))?;
+        let decrypted = cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| CryptoError::Decrypt("解密失败".into()))?;
+        String::from_utf8(decrypted).map_err(|_| CryptoError::Format("解密结果不是有效UTF8".into()))
+    }
 }
 
 impl Drop for SystemKey {

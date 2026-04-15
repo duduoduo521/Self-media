@@ -19,30 +19,30 @@ use crate::AppState;
 pub enum SseEvent {
     /// 任务进度更新
     TaskProgress {
-        task_id: i64,
+        task_id: String,  // 修复：与 Task.id (String/UUID) 类型一致
         step: String,
         progress: u32,
         message: String,
     },
     /// 任务完成
     TaskCompleted {
-        task_id: i64,
+        task_id: String,  // 修复：与 Task.id (String/UUID) 类型一致
         result: String,
     },
     /// 任务失败
     TaskFailed {
-        task_id: i64,
+        task_id: String,  // 修复：与 Task.id (String/UUID) 类型一致
         error: String,
     },
     /// AI 生成进度
     AiGeneration {
-        task_id: i64,
+        task_id: String,  // 修复：与 Task.id (String/UUID) 类型一致
         stage: String,
         content_type: String,
     },
     /// 平台发布进度
     PlatformPublish {
-        task_id: i64,
+        task_id: String,  // 修复：与 Task.id (String/UUID) 类型一致
         platform: String,
         status: String,
     },

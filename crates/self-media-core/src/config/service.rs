@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use lru::LruCache;
-use self_media_crypto::UserKey;
+use self_media_crypto::{UserKey, SystemKey};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
@@ -32,14 +32,15 @@ pub struct UserPreferences {
 
 pub struct ConfigService {
     db: SqlitePool,
+    system_key: SystemKey,
 }
 
 impl ConfigService {
-    pub fn new(db: SqlitePool) -> Self {
-        Self { db }
+    pub fn new(db: SqlitePool, system_key: SystemKey) -> Self {
+        Self { db, system_key }
     }
 
-    /// 设置 API Key（直接存储到 users 表）
+    /// 设置 API Key（加密存储到 users 表）
     pub async fn set_api_key(
         &self,
         user_id: i64,
@@ -52,10 +53,13 @@ impl ConfigService {
             return Err(AppError::validation(INPUT_001, "API Key 不能为空"));
         }
 
+        // 使用 SystemKey 加密后存储
+        let encrypted_key = self.system_key.encrypt(key)?;
+
         sqlx::query(
             "UPDATE users SET minimax_api_key = ? WHERE id = ?"
         )
-        .bind(key)
+        .bind(&encrypted_key)
         .bind(user_id)
         .execute(&self.db)
         .await?;
@@ -63,7 +67,7 @@ impl ConfigService {
         Ok(())
     }
 
-    /// 获取 API Key（从 users 表直接读取，不加密）
+    /// 获取 API Key（从 users 表读取并解密）
     pub async fn get_api_key(
         &self,
         user_id: i64,
@@ -77,7 +81,9 @@ impl ConfigService {
         .fetch_optional(&self.db)
         .await?;
 
-        if let Some((api_key,)) = row {
+        if let Some((encrypted_key,)) = row {
+            // 使用 SystemKey 解密
+            let api_key = self.system_key.decrypt(&encrypted_key)?;
             return Ok((api_key, MiniMaxRegion::CN));
         }
 

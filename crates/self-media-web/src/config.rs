@@ -31,7 +31,7 @@ pub async fn get_api_key(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<ApiOk<ApiKeyResponse>, WebError> {
-    let api_key: Option<String> = sqlx::query_scalar(
+    let encrypted_api_key: Option<String> = sqlx::query_scalar(
         "SELECT minimax_api_key FROM users WHERE id = ?"
     )
     .bind(auth.user_id)
@@ -39,9 +39,23 @@ pub async fn get_api_key(
     .await
     .map_err(|e| WebError(AppError::Internal(anyhow::anyhow!("数据库错误: {}", e))))?;
 
+    // 返回脱敏后的 API Key 预览（保留前4位）
+    let masked_key = if let Some(encrypted) = encrypted_api_key {
+        // 解密获取原始 key
+        let api_key = state.system_key.decrypt(&encrypted)
+            .map_err(|e| WebError(AppError::Internal(anyhow::anyhow!("API Key 解密失败: {}", e))))?;
+        if api_key.len() > 4 {
+            format!("{}****", &api_key[..4])
+        } else {
+            "****".to_string()
+        }
+    } else {
+        "".to_string()
+    };
+
     Ok(ApiOk(ApiKeyResponse {
         provider: "minimax".to_string(),
-        key: api_key.unwrap_or_default(),
+        key: masked_key,
         region: "cn".to_string(),
     }))
 }

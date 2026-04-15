@@ -12,7 +12,7 @@ use axum::{
 
 use crate::csrf::csrf_protection;
 use serde::Serialize;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use self_media_core::config::ConfigService;
@@ -36,6 +36,7 @@ mod qr_login;
 mod sse;
 mod storage;
 mod task;
+mod upload;  // 文件上传模块
 
 /// SSE 事件类型（复用 sse 模块定义）
 pub use sse::SseEvent;
@@ -191,6 +192,21 @@ async fn main() -> anyhow::Result<()> {
     let web_port: u16 = std::env::var("SELF_MEDIA_WEB_PORT")
         .unwrap_or_else(|_| "3000".into())
         .parse()?;
+    
+    // CORS 白名单配置
+    let cors_origins: Vec<String> = std::env::var("SELF_MEDIA_CORS_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:5173,http://localhost:3000".into())
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    
+    // CSRF 保护配置（生产环境默认启用，开发环境可禁用）
+    let csrf_enabled = std::env::var("SELF_MEDIA_CSRF_ENABLED")
+        .map(|v| v != "false" && v != "0")
+        .unwrap_or_else(|_| {
+            // 默认：非开发模式时启用
+            std::env::var("SELF_MEDIA_ENV").unwrap_or_default() != "development"
+        });
 
     let pool = create_pool(&db_path).await?;
     tracing::info!("数据库连接成功: {}", db_path);
@@ -202,13 +218,16 @@ async fn main() -> anyhow::Result<()> {
     if let Err(e) = save_system_key(&system_key) {
         tracing::warn!("系统密钥持久化失败: {}", e);
     }
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client");
     let http_for_hotspot = http.clone();
     let http_for_qr = http.clone();
 
     let user_service = Arc::new(UserService::new(pool.clone(), system_key.clone()));
     let hotspot_service = HotspotService::new(http_for_hotspot);
-    let config_service = Arc::new(ConfigService::new(pool.clone()));
+    let config_service = Arc::new(ConfigService::new(pool.clone(), system_key.clone()));
     let draft_service = Arc::new(self_media_core::draft::DraftService::new(pool.clone()));
     let task_scheduler = TaskScheduler::new(pool.clone(), 5);
     let mut publisher_registry = PublisherRegistry::new();
@@ -242,14 +261,22 @@ async fn main() -> anyhow::Result<()> {
         .nest("/hotspot", hotspot::router())
         .nest("/tasks", task::router())
         .nest("/drafts", draft::router())
+        .nest("/upload", upload::router())  // 文件上传路由（需要认证）
         .route("/api-key", get(config::get_api_key).put(config::set_api_key))
         .route("/platforms", get(config::get_platforms))
         .route("/platforms/{platform}", put(config::set_platform))
         .route("/preferences", get(config::get_preferences).put(config::set_preferences))
         .route("/models", get(config::get_model_config).put(config::set_model_config))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
-        // CSRF 防护已禁用（开发模式）
-        // .layer(middleware::from_fn(csrf_protection));
+    
+    // CSRF 防护（可通过环境变量控制）
+    let protected = if csrf_enabled {
+        tracing::info!("CSRF 保护已启用");
+        protected.layer(middleware::from_fn(csrf_protection))
+    } else {
+        tracing::warn!("CSRF 保护已禁用（仅限开发模式使用）");
+        protected
+    };
 
     let app = Router::new()
         .route("/api/health", get(health_check))
@@ -257,7 +284,16 @@ async fn main() -> anyhow::Result<()> {
         .merge(sse::router())
         .nest("/api/auth", auth::router())
         .nest("/api", protected)
-        .layer(CorsLayer::permissive())
+        .layer(CorsLayer::new()
+            .allow_origin(AllowOrigin::list(cors_origins.iter().filter_map(|o| {
+                o.parse::<axum::http::HeaderValue>().ok()
+            })))
+            .allow_methods([axum::http::Method::GET, axum::http::Method::POST, 
+                           axum::http::Method::PUT, axum::http::Method::DELETE,
+                           axum::http::Method::OPTIONS])
+            .allow_headers([axum::http::header::AUTHORIZATION, 
+                            axum::http::header::CONTENT_TYPE,
+                            axum::http::header::COOKIE]))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -273,17 +309,22 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
-/// 系统密钥文件路径
-const SYSTEM_KEY_FILE: &str = "./data/system_key.enc";
+/// 获取系统密钥文件路径
+fn get_system_key_file() -> String {
+    std::env::var("SELF_MEDIA_SYSTEM_KEY_FILE")
+        .unwrap_or_else(|_| "./data/system_key.enc".into())
+}
 
 /// 从文件加载或创建系统密钥
 async fn load_or_create_system_key() -> anyhow::Result<SystemKey> {
     let machine_key = std::env::var("SELF_MEDIA_MACHINE_KEY")
-        .unwrap_or_else(|_| "dev-machine-key-change-in-production".to_string());
+        .unwrap_or_else(|_| "dev-machine-key-32bytes!!".to_string());  // 精确32字节
     let machine_key_bytes = machine_key.as_bytes();
+    
+    let system_key_file = get_system_key_file();
 
     // 尝试从文件加载
-    if let Ok(encrypted) = tokio::fs::read_to_string(SYSTEM_KEY_FILE).await {
+    if let Ok(encrypted) = tokio::fs::read_to_string(&system_key_file).await {
         match SystemKey::load(&encrypted, machine_key_bytes) {
             Ok(key) => {
                 tracing::info!("系统密钥已从文件加载");
@@ -304,17 +345,19 @@ async fn load_or_create_system_key() -> anyhow::Result<SystemKey> {
 /// 保存系统密钥到文件
 fn save_system_key(key: &SystemKey) -> anyhow::Result<()> {
     let machine_key = std::env::var("SELF_MEDIA_MACHINE_KEY")
-        .unwrap_or_else(|_| "dev-machine-key-change-in-production".to_string());
+        .unwrap_or_else(|_| "dev-machine-key-32bytes!!".to_string());  // 精确32字节
     let machine_key_bytes = machine_key.as_bytes();
+    
+    let system_key_file = get_system_key_file();
 
     let encrypted = key.save(machine_key_bytes)?;
     
     // 确保目录存在
-    if let Some(parent) = std::path::Path::new(SYSTEM_KEY_FILE).parent() {
+    if let Some(parent) = std::path::Path::new(&system_key_file).parent() {
         std::fs::create_dir_all(parent)?;
     }
     
-    std::fs::write(SYSTEM_KEY_FILE, encrypted)?;
+    std::fs::write(&system_key_file, encrypted)?;
     tracing::info!("系统密钥已保存到文件");
     Ok(())
 }

@@ -36,6 +36,8 @@ impl UserService {
         let salt = generate_salt();
         let password_hash = hash_password(&req.password, &salt)?;
         let phone_value = req.phone.as_deref().unwrap_or("");
+        // 加密 MiniMax API Key 后存储
+        let encrypted_api_key = self.system_key.encrypt(&req.minimax_api_key)?;
         let user: User = sqlx::query_as(
             "INSERT INTO users (username, password_hash, salt, email, minimax_api_key, phone) VALUES (?, ?, ?, ?, ?, ?) RETURNING *"
         )
@@ -43,7 +45,7 @@ impl UserService {
         .bind(&password_hash)
         .bind(&salt)
         .bind(&req.email)
-        .bind(&req.minimax_api_key)
+        .bind(&encrypted_api_key)
         .bind(phone_value)
         .fetch_one(&self.db)
         .await?;
@@ -154,14 +156,17 @@ impl UserService {
     }
 
     pub async fn get_user_minimax_key(&self, user_id: i64) -> Result<String, AppError> {
-        let api_key: Option<String> = sqlx::query_scalar(
+        let encrypted_api_key: Option<String> = sqlx::query_scalar(
             "SELECT minimax_api_key FROM users WHERE id = ?"
         )
         .bind(user_id)
         .fetch_optional(&self.db)
         .await?;
 
-        api_key.ok_or(AppError::config(CONFIG_001, "用户不存在或API Key未设置"))
+        let encrypted = encrypted_api_key.ok_or(AppError::config(CONFIG_001, "用户不存在或API Key未设置"))?;
+        // 解密 API Key 后返回
+        self.system_key.decrypt(&encrypted)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("API Key 解密失败: {}", e)))
     }
 
     pub async fn get_user_model_config(&self, user_id: i64) -> Result<UserModelConfig, AppError> {
@@ -255,29 +260,40 @@ fn validate_username(username: &str) -> Result<(), AppError> {
 }
 
 fn validate_password(password: &str) -> Result<(), AppError> {
-    if password.len() < 6 || password.len() > 64 {
-        return Err(AppError::validation(AUTH_005, "密码长度需在 6-64 之间"));
+    if password.len() < 8 || password.len() > 64 {
+        return Err(AppError::validation(AUTH_005, "密码长度需在 8-64 之间"));
+    }
+    // 检查密码复杂度：必须包含字母和数字
+    let has_letter = password.chars().any(|c| c.is_alphabetic());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+    if !has_letter || !has_digit {
+        return Err(AppError::validation(AUTH_005, "密码必须包含字母和数字"));
     }
     Ok(())
 }
 
 fn validate_email(email: &str) -> Result<(), AppError> {
     if email.is_empty() {
-        return Err(AppError::validation(AUTH_005, "邮箱不能为空"));
+        return Err(AppError::validation(INPUT_001, "邮箱不能为空"));
     }
-    let email_regex = regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+    // 预编译邮箱正则表达式（避免每次调用时重新编译）
+    static EMAIL_REGEX: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let email_regex = EMAIL_REGEX.get_or_init(|| {
+        regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+            .expect("email regex is valid")
+    });
     if !email_regex.is_match(email) {
-        return Err(AppError::validation(AUTH_005, "邮箱格式不正确"));
+        return Err(AppError::validation(INPUT_001, "邮箱格式不正确"));
     }
     Ok(())
 }
 
 fn validate_phone(phone: &str) -> Result<(), AppError> {
     if phone.len() != 11 {
-        return Err(AppError::validation(AUTH_005, "手机号码必须为11位"));
+        return Err(AppError::validation(INPUT_001, "手机号码必须为11位"));
     }
     if !phone.chars().all(|c| c.is_numeric()) {
-        return Err(AppError::validation(AUTH_005, "手机号码只能包含数字"));
+        return Err(AppError::validation(INPUT_001, "手机号码只能包含数字"));
     }
     Ok(())
 }

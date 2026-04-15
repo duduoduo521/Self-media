@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use reqwest::Client;
+use tokio::sync::Mutex;
 
 use crate::error::*;
 use crate::types::{Hotspot, HotspotSource};
@@ -84,7 +84,7 @@ impl HotspotService {
     pub async fn fetch_by_source(&self, source: HotspotSource, force_refresh: bool) -> Result<Vec<Hotspot>, AppError> {
         if !force_refresh {
             if let Some(cached) = {
-                let cache = self.cache.lock().unwrap();
+                let cache = self.cache.lock().await;
                 cache.get(&source).filter(|c| c.is_valid()).map(|c| c.data.clone())
             } {
                 return Ok(cached);
@@ -108,7 +108,7 @@ impl HotspotService {
         };
 
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().await;
             cache.insert(source.clone(), SourceCache {
                 data: hotspots.clone(),
                 last_fetch: Some(Instant::now()),
@@ -355,7 +355,7 @@ impl SourceRateLimiter {
 
     pub async fn acquire(&self, source: &HotspotSource) {
         let wait = {
-            let map = self.last_request.lock().unwrap();
+            let map = self.last_request.lock().await;
             let now = Instant::now();
             if let Some(last) = map.get(source) {
                 let elapsed = now.duration_since(*last);
@@ -373,7 +373,7 @@ impl SourceRateLimiter {
             tokio::time::sleep(wait).await;
         }
 
-        let mut map = self.last_request.lock().unwrap();
+        let mut map = self.last_request.lock().await;
         map.insert(source.clone(), Instant::now());
     }
 }

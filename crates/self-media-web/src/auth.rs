@@ -31,12 +31,12 @@ impl IntoResponse for LoginResponse {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
         let cookie = format!(
-            "token={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800",
+            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
             self.token
         );
         headers.append(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(&cookie).unwrap(),
+            HeaderValue::from_str(&cookie).expect("cookie format is valid"),
         );
         // 生成 CSRF token（非 HttpOnly，前端需要读取放入请求头）
         let csrf_token = generate_csrf_token();
@@ -46,7 +46,7 @@ impl IntoResponse for LoginResponse {
         );
         headers.append(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(&csrf_cookie).unwrap(),
+            HeaderValue::from_str(&csrf_cookie).expect("csrf_cookie format is valid"),
         );
         (
             StatusCode::OK,
@@ -78,12 +78,12 @@ impl IntoResponse for RegisterResponseWrapper {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
         let cookie = format!(
-            "token={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800",
+            "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800",
             self.token
         );
         headers.append(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(&cookie).unwrap(),
+            HeaderValue::from_str(&cookie).expect("cookie format is valid"),
         );
         // 生成 CSRF token（非 HttpOnly，前端需要读取放入请求头）
         let csrf_token = generate_csrf_token();
@@ -93,7 +93,7 @@ impl IntoResponse for RegisterResponseWrapper {
         );
         headers.append(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(&csrf_cookie).unwrap(),
+            HeaderValue::from_str(&csrf_cookie).expect("csrf_cookie format is valid"),
         );
         (
             StatusCode::OK,
@@ -171,17 +171,17 @@ struct LogoutResponse;
 impl IntoResponse for LogoutResponse {
     fn into_response(self) -> Response {
         let mut headers = HeaderMap::new();
-        // 清除 Cookie（设置过期时间为 0）
-        let cookie = "token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
+    // 清除 Cookie（设置过期时间为 0）
+        let cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0";
         headers.insert(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(cookie).unwrap(),
+            HeaderValue::from_str(cookie).expect("cookie format is valid"),
         );
         // 清除 CSRF token Cookie
         let csrf_cookie = "csrf_token=; SameSite=Strict; Path=/; Max-Age=0";
         headers.insert(
             axum::http::header::SET_COOKIE,
-            HeaderValue::from_str(csrf_cookie).unwrap(),
+            HeaderValue::from_str(csrf_cookie).expect("csrf_cookie format is valid"),
         );
         (StatusCode::OK, headers, Json(serde_json::json!({"code": "0", "message": "success"})))
             .into_response()

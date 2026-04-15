@@ -36,11 +36,25 @@ impl TaskScheduler {
         platforms: Vec<Platform>,
         event_date: Option<chrono::NaiveDate>,
     ) -> Result<Task, AppError> {
-        let active = self.active_count.load(Ordering::Relaxed);
-        if active >= self.concurrent_limit {
-            return Err(AppError::task(TASK_003, format!(
-                "并发任务数已达上限 ({}/{}), 请等待", active, self.concurrent_limit
-            )));
+        // 使用原子 compare_exchange 避免竞态条件
+        // 先尝试原子递增，如果已超限则返回错误
+        loop {
+            let current = self.active_count.load(Ordering::Acquire);
+            if current >= self.concurrent_limit {
+                return Err(AppError::task(TASK_003, format!(
+                    "并发任务数已达上限 ({}/{}), 请等待", current, self.concurrent_limit
+                )));
+            }
+            // 尝试原子递增：如果 current 未被其他线程修改，则递增成功
+            match self.active_count.compare_exchange(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,  // 成功递增，退出循环
+                Err(_) => continue,  // 被其他线程修改，重新检查
+            }
         }
 
         if topic.trim().is_empty() {
@@ -88,6 +102,8 @@ impl TaskScheduler {
         }
 
         self.cancel_tokens.lock().unwrap().insert(task_id.clone(), CancellationToken::new());
+
+        // 任务创建成功后计数已递增，实际执行时由 executor 管理
 
         Ok(task)
     }
